@@ -1,10 +1,11 @@
 package de.snowworks.app.ui
 
 import android.content.Intent
-
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,10 +21,10 @@ import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
-import de.snowworks.ariana.camera.CameraFrameStore
-import de.snowworks.ariana.session.ArianaCaptureService
-import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.bridge.LocalBridgeServer
+import de.snowworks.ariana.camera.CameraFrameStore
+import de.snowworks.ariana.files.TreePermissionStore
+import de.snowworks.ariana.session.ArianaCaptureService
 
 class DeviceGrantsActivity : AppCompatActivity() {
 
@@ -69,7 +70,7 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
-        LocalBridgeServer.start(this) // starts only if the persisted master gate is enabled
+        LocalBridgeServer.start(this)
         setContentView(buildUi())
     }
 
@@ -180,10 +181,11 @@ class DeviceGrantsActivity : AppCompatActivity() {
         switches[feature] = sw
         actions.addView(sw)
         card.addView(actions)
+
         if (feature == Feature.CAMERA) {
             card.addView(
                 MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                    text = "Testbild anzeigen"
+                    text = "Live-Testbild anzeigen"
                     setOnClickListener { showCameraTestImage() }
                 },
             )
@@ -273,27 +275,44 @@ class DeviceGrantsActivity : AppCompatActivity() {
     }
 
     private fun showCameraTestImage() {
-        val frame = CameraFrameStore.latest()
-        if (frame == null) {
+        val firstFrame = CameraFrameStore.latest()
+        if (firstFrame == null) {
             toast("Noch kein Kamerabild da. Kamera einschalten und kurz warten.")
             return
         }
-        val bitmap = BitmapFactory.decodeByteArray(frame.jpeg, 0, frame.jpeg.size)
-        if (bitmap == null) {
-            toast("Kamerabild konnte nicht dekodiert werden.")
-            return
-        }
+
         val image = ImageView(this).apply {
-            setImageBitmap(bitmap)
             adjustViewBounds = true
             scaleType = ImageView.ScaleType.FIT_CENTER
             setPadding(24, 16, 24, 16)
         }
-        AlertDialog.Builder(this)
-            .setTitle("Kamera-Testbild · ${frame.width}×${frame.height}")
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Kamera-Livebild · ${firstFrame.width}×${firstFrame.height}")
             .setView(image)
             .setPositiveButton("OK", null)
-            .show()
+            .create()
+        val handler = Handler(Looper.getMainLooper())
+        var lastCapturedAt = -1L
+
+        val updater = object : Runnable {
+            override fun run() {
+                if (!dialog.isShowing) return
+                val frame = CameraFrameStore.latest()
+                if (frame != null && frame.capturedAt != lastCapturedAt) {
+                    val bitmap = BitmapFactory.decodeByteArray(frame.jpeg, 0, frame.jpeg.size)
+                    if (bitmap != null) {
+                        image.setImageBitmap(bitmap)
+                        dialog.setTitle("Kamera-Livebild · ${frame.width}×${frame.height}")
+                        lastCapturedAt = frame.capturedAt
+                    }
+                }
+                handler.postDelayed(this, TEST_VIEW_REFRESH_MS)
+            }
+        }
+
+        dialog.setOnShowListener { handler.post(updater) }
+        dialog.setOnDismissListener { handler.removeCallbacks(updater) }
+        dialog.show()
     }
 
     private fun toast(msg: String) {
@@ -310,5 +329,9 @@ class DeviceGrantsActivity : AppCompatActivity() {
     private fun row() = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
+    }
+
+    companion object {
+        private const val TEST_VIEW_REFRESH_MS = 150L
     }
 }
