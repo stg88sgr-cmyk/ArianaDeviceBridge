@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="snow_bg">#0B0F12</color>
+    <color name="snow_surface">#13191E</color>
+    <color name="snow_ice">#C5D4DC</color>
+    <color name="snow_stop">#C45C4A</color>
+    <color name="snow_ok">#7D9A86</color>
+    <color name="snow_fg">#E9EEF1</color>
+    <color name="snow_muted">#8A9AA6</color>
+</resources>
