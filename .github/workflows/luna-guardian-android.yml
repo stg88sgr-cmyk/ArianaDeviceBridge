@@ -1,0 +1,46 @@
+name: Build Luna Guardian APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "luna-guardian/**"
+      - ".github/workflows/luna-guardian-android.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unpack Luna Guardian source
+        run: |
+          rm -rf build-luna
+          mkdir -p build-luna
+          unzip -q luna-guardian/LunaGuardian-android-v0.2.zip -d build-luna
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: yes | sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Build debug APK
+        working-directory: build-luna/LunaGuardian-android
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: LunaGuardian-debug-apk
+          path: build-luna/LunaGuardian-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
