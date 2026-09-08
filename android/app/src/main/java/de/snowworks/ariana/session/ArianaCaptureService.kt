@@ -10,7 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.graphics.ImageFormat
+import android.graphics.PixelFormat
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.media.AudioFormat
@@ -74,8 +74,6 @@ class ArianaCaptureService : Service() {
         }
         if (startingFeature != null) {
             pendingCapture.add(startingFeature)
-            // Android 14+ requires the matching foreground-service type before
-            // sensitive capture resources (especially MediaProjection) open.
             refreshForegroundOrStop()
         }
 
@@ -261,7 +259,7 @@ class ArianaCaptureService : Service() {
         val width = metrics.widthPixels.coerceAtLeast(1)
         val height = metrics.heightPixels.coerceAtLeast(1)
         val density = metrics.densityDpi
-        imageReader = ImageReader.newInstance(width, height, ImageFormat.RGBA_8888, 2)
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection.createVirtualDisplay(
             "ArianaScreen",
             width,
