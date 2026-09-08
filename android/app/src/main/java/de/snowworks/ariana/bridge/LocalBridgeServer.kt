@@ -1,8 +1,10 @@
 package de.snowworks.ariana.bridge
 
 import android.content.Context
+import android.util.Base64
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
@@ -162,6 +164,18 @@ object LocalBridgeServer {
             "notification_clear" -> {
                 NotificationStore.clear()
                 ok(requestId)
+            }
+            "camera_snapshot" -> {
+                val frame = CameraFrameStore.latest()
+                    ?: return error("FEATURE_NOT_ACTIVE", "Noch kein Kamerabild verfügbar. Starte die Kamera sichtbar in der App.", requestId)
+                JSONObject()
+                    .put("ok", true)
+                    .put("requestId", requestId)
+                    .put("mimeType", "image/jpeg")
+                    .put("width", frame.width)
+                    .put("height", frame.height)
+                    .put("capturedAt", frame.capturedAt)
+                    .put("jpegBase64", Base64.encodeToString(frame.jpeg, Base64.NO_WRAP))
             }
             "camera_stop" -> {
                 ArianaCaptureService.stopFeature(context, Feature.CAMERA)
