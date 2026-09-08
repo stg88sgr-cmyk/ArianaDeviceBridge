@@ -10,9 +10,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
-import android.graphics.PixelFormat
+import android.graphics.ImageFormat
+import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.ImageReader
@@ -29,6 +31,7 @@ import de.snowworks.app.R
 import de.snowworks.app.ui.DeviceGrantsActivity
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.camera.CameraFrameStore
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -38,8 +41,29 @@ import java.util.concurrent.atomic.AtomicBoolean
  */
 class ArianaCaptureService : Service() {
     private var cameraDevice: CameraDevice? = null
+    private var cameraSession: CameraCaptureSession? = null
+    private var cameraReader: ImageReader? = null
     private var cameraThread: HandlerThread? = null
     private var cameraHandler: Handler? = null
+    private var cameraWidth: Int = 0
+    private var cameraHeight: Int = 0
+
+    private val cameraFramePump = object : Runnable {
+        override fun run() {
+            val camera = cameraDevice ?: return
+            val session = cameraSession ?: return
+            val reader = cameraReader ?: return
+            runCatching {
+                val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE).apply {
+                    addTarget(reader.surface)
+                    set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
+                    set(CaptureRequest.JPEG_QUALITY, CAMERA_JPEG_QUALITY)
+                }.build()
+                session.capture(request, null, cameraHandler)
+            }
+            cameraHandler?.postDelayed(this, CAMERA_FRAME_INTERVAL_MS)
+        }
+    }
 
     private var audioRecord: AudioRecord? = null
     private var audioThread: Thread? = null
@@ -74,6 +98,8 @@ class ArianaCaptureService : Service() {
         }
         if (startingFeature != null) {
             pendingCapture.add(startingFeature)
+            // Android 14+ requires the matching foreground-service type before
+            // sensitive capture resources (especially MediaProjection) open.
             refreshForegroundOrStop()
         }
 
@@ -98,7 +124,7 @@ class ArianaCaptureService : Service() {
     }
 
     private fun startCamera() {
-        if (cameraDevice != null || SessionRegistry.isActive(Feature.CAMERA)) {
+        if (cameraDevice != null || cameraSession != null || SessionRegistry.isActive(Feature.CAMERA)) {
             pendingCapture.remove(Feature.CAMERA)
             return
         }
@@ -107,58 +133,138 @@ class ArianaCaptureService : Service() {
             SessionRegistry.markActive(Feature.CAMERA, false)
             return
         }
+
+        CameraFrameStore.clear()
         val manager = getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val id = runCatching { manager.cameraIdList.firstOrNull() }.getOrNull() ?: run { pendingCapture.remove(Feature.CAMERA); return }
+        val id = runCatching { manager.cameraIdList.firstOrNull() }.getOrNull()
+            ?: run {
+                pendingCapture.remove(Feature.CAMERA)
+                return
+            }
         cameraThread = HandlerThread("ArianaCamera").also { it.start() }
         cameraHandler = Handler(cameraThread!!.looper)
+
         runCatching {
             manager.openCamera(
                 id,
                 object : CameraDevice.StateCallback() {
                     override fun onOpened(camera: CameraDevice) {
                         cameraDevice = camera
-                        pendingCapture.remove(Feature.CAMERA)
-                        SessionRegistry.markActive(Feature.CAMERA, true)
-                        refreshForegroundOrStop()
+                        configureCameraFrames(manager, id, camera)
                     }
 
                     override fun onDisconnected(camera: CameraDevice) {
                         camera.close()
                         cameraDevice = null
-                        pendingCapture.remove(Feature.CAMERA)
-                        SessionRegistry.markActive(Feature.CAMERA, false)
-                        refreshForegroundOrStop()
+                        failCameraSession()
                     }
 
                     override fun onError(camera: CameraDevice, error: Int) {
                         camera.close()
                         cameraDevice = null
-                        pendingCapture.remove(Feature.CAMERA)
-                        SessionRegistry.markActive(Feature.CAMERA, false)
-                        refreshForegroundOrStop()
+                        failCameraSession()
                     }
                 },
                 cameraHandler,
             )
         }.onFailure {
-            pendingCapture.remove(Feature.CAMERA)
-            SessionRegistry.markActive(Feature.CAMERA, false)
-            stopCameraThread()
+            failCameraSession()
         }
     }
 
-    private fun stopCamera() {
-        runCatching { cameraDevice?.close() }
-        cameraDevice = null
+    private fun configureCameraFrames(manager: CameraManager, cameraId: String, camera: CameraDevice) {
+        val sizes = runCatching {
+            manager.getCameraCharacteristics(cameraId)
+                .get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(ImageFormat.JPEG)
+                ?.toList()
+                .orEmpty()
+        }.getOrDefault(emptyList())
+
+        val targetArea = 640L * 480L
+        val size = sizes.minByOrNull { kotlin.math.abs(it.width.toLong() * it.height.toLong() - targetArea) }
+            ?: android.util.Size(640, 480)
+        cameraWidth = size.width
+        cameraHeight = size.height
+
+        val reader = ImageReader.newInstance(cameraWidth, cameraHeight, ImageFormat.JPEG, 2)
+        cameraReader = reader
+        reader.setOnImageAvailableListener({ source ->
+            val image = runCatching { source.acquireLatestImage() }.getOrNull() ?: return@setOnImageAvailableListener
+            image.use {
+                val plane = it.planes.firstOrNull() ?: return@use
+                val buffer = plane.buffer
+                val bytes = ByteArray(buffer.remaining())
+                buffer.get(bytes)
+                if (bytes.isNotEmpty()) {
+                    CameraFrameStore.update(bytes, cameraWidth, cameraHeight)
+                }
+            }
+        }, cameraHandler)
+
+        runCatching {
+            camera.createCaptureSession(
+                listOf(reader.surface),
+                object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        if (cameraDevice !== camera) {
+                            session.close()
+                            return
+                        }
+                        cameraSession = session
+                        pendingCapture.remove(Feature.CAMERA)
+                        SessionRegistry.markActive(Feature.CAMERA, true)
+                        cameraHandler?.removeCallbacks(cameraFramePump)
+                        cameraHandler?.post(cameraFramePump)
+                        refreshForegroundOrStop()
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        session.close()
+                        failCameraSession()
+                    }
+                },
+                cameraHandler,
+            )
+        }.onFailure {
+            failCameraSession()
+        }
+    }
+
+    private fun failCameraSession() {
         pendingCapture.remove(Feature.CAMERA)
         SessionRegistry.markActive(Feature.CAMERA, false)
+        releaseCameraResources()
+        refreshForegroundOrStop()
+    }
+
+    private fun stopCamera() {
+        pendingCapture.remove(Feature.CAMERA)
+        SessionRegistry.markActive(Feature.CAMERA, false)
+        releaseCameraResources()
+        CameraFrameStore.clear()
+    }
+
+    private fun releaseCameraResources() {
+        cameraHandler?.removeCallbacks(cameraFramePump)
+        runCatching { cameraSession?.stopRepeating() }
+        runCatching { cameraSession?.abortCaptures() }
+        runCatching { cameraSession?.close() }
+        cameraSession = null
+        runCatching { cameraReader?.close() }
+        cameraReader = null
+        runCatching { cameraDevice?.close() }
+        cameraDevice = null
+        cameraWidth = 0
+        cameraHeight = 0
         stopCameraThread()
     }
 
     private fun stopCameraThread() {
+        val thread = cameraThread
         cameraHandler = null
-        cameraThread?.quitSafely()
         cameraThread = null
+        thread?.quitSafely()
     }
 
     private fun startMicrophone() {
@@ -259,7 +365,7 @@ class ArianaCaptureService : Service() {
         val width = metrics.widthPixels.coerceAtLeast(1)
         val height = metrics.heightPixels.coerceAtLeast(1)
         val density = metrics.densityDpi
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        imageReader = ImageReader.newInstance(width, height, android.graphics.PixelFormat.RGBA_8888, 2)
         virtualDisplay = mediaProjection.createVirtualDisplay(
             "ArianaScreen",
             width,
@@ -370,6 +476,8 @@ class ArianaCaptureService : Service() {
         private const val CHANNEL_ID = "ariana_session"
         private const val NOTIF_ID = 42
         private const val SAMPLE_RATE = 16_000
+        private const val CAMERA_FRAME_INTERVAL_MS = 750L
+        private const val CAMERA_JPEG_QUALITY: Byte = 75
 
         fun start(context: Context, feature: Feature) {
             val action = when (feature) {
