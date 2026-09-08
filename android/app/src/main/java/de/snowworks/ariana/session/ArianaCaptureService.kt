@@ -12,6 +12,7 @@ import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.ImageFormat
 import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraDevice
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
@@ -47,6 +48,7 @@ class ArianaCaptureService : Service() {
     private var cameraHandler: Handler? = null
     private var cameraWidth: Int = 0
     private var cameraHeight: Int = 0
+    private var cameraJpegOrientation: Int = 0
 
     private val cameraFramePump = object : Runnable {
         override fun run() {
@@ -58,6 +60,7 @@ class ArianaCaptureService : Service() {
                     addTarget(reader.surface)
                     set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE)
                     set(CaptureRequest.JPEG_QUALITY, CAMERA_JPEG_QUALITY)
+                    set(CaptureRequest.JPEG_ORIENTATION, cameraJpegOrientation)
                 }.build()
                 session.capture(request, null, cameraHandler)
             }
@@ -173,13 +176,13 @@ class ArianaCaptureService : Service() {
     }
 
     private fun configureCameraFrames(manager: CameraManager, cameraId: String, camera: CameraDevice) {
-        val sizes = runCatching {
-            manager.getCameraCharacteristics(cameraId)
-                .get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                ?.getOutputSizes(ImageFormat.JPEG)
-                ?.toList()
-                .orEmpty()
-        }.getOrDefault(emptyList())
+        val characteristics = runCatching { manager.getCameraCharacteristics(cameraId) }.getOrNull()
+        cameraJpegOrientation = characteristics?.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        val sizes = characteristics
+            ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            ?.getOutputSizes(ImageFormat.JPEG)
+            ?.toList()
+            .orEmpty()
 
         val targetArea = 640L * 480L
         val size = sizes.minByOrNull { kotlin.math.abs(it.width.toLong() * it.height.toLong() - targetArea) }
@@ -257,6 +260,7 @@ class ArianaCaptureService : Service() {
         cameraDevice = null
         cameraWidth = 0
         cameraHeight = 0
+        cameraJpegOrientation = 0
         stopCameraThread()
     }
 
@@ -476,8 +480,8 @@ class ArianaCaptureService : Service() {
         private const val CHANNEL_ID = "ariana_session"
         private const val NOTIF_ID = 42
         private const val SAMPLE_RATE = 16_000
-        private const val CAMERA_FRAME_INTERVAL_MS = 750L
-        private const val CAMERA_JPEG_QUALITY: Byte = 75
+        private const val CAMERA_FRAME_INTERVAL_MS = 200L
+        private const val CAMERA_JPEG_QUALITY: Byte = 70
 
         fun start(context: Context, feature: Feature) {
             val action = when (feature) {
