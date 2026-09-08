@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Snowworks</string>
+    <string name="listener_label">Ariana Benachrichtigungen lesen</string>
+    <string name="channel_session">Ariana-Sitzung</string>
+    <string name="notif_title">Ariana nutzt Gerätedaten</string>
+    <string name="notif_stop">Alles stoppen</string>
+    <string name="master_label">Ariana-Gerätezugriff</string>
+    <string name="stop_all">Alles stoppen</string>
+    <string name="not_connected">Nicht verbunden</string>
+    <string name="not_connected_detail">Berechtigung allein stellt keine Verbindung zu einem KI-Dienst her. Ein aktiver Kanal ist nicht implementiert.</string>
+</resources>
