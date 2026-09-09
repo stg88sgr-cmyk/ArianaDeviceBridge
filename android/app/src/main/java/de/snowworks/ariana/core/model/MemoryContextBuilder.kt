@@ -3,8 +3,8 @@ package de.snowworks.ariana.core.model
 import de.snowworks.ariana.core.MemoryVault
 
 /**
- * Selects a bounded local memory subset before a model request.
- * The whole vault is never included by default.
+ * Selects a bounded, relevant local memory subset before a model request.
+ * The whole vault is never included by default and zero-match records stay local.
  */
 class MemoryContextBuilder(private val vault: MemoryVault) {
     data class Selection(
@@ -18,9 +18,12 @@ class MemoryContextBuilder(private val vault: MemoryVault) {
         require(maxChars in 256..MAX_CHARS_LIMIT)
 
         val terms = tokenize(query)
+        if (terms.isEmpty()) return Selection(emptyList(), "", 0)
+
         val ranked = vault.list()
             .asSequence()
             .map { record -> record to score(record, terms) }
+            .filter { (_, score) -> score > 0 }
             .sortedWith(compareByDescending<Pair<MemoryVault.Record, Int>> { it.second }
                 .thenByDescending { it.first.updatedAt })
             .take(maxRecords * 3)
@@ -47,7 +50,6 @@ class MemoryContextBuilder(private val vault: MemoryVault) {
     }
 
     private fun score(record: MemoryVault.Record, terms: Set<String>): Int {
-        if (terms.isEmpty()) return 0
         val textTokens = tokenize(record.text)
         val tagTokens = record.tags.flatMapTo(mutableSetOf()) { tokenize(it) }
         val kindTokens = tokenize(record.kind)
