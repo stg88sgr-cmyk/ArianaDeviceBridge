@@ -95,6 +95,9 @@ class NetworkGate(context: Context) {
         )
     }
 
+    /** Policy-only check. Does not open a socket and does not write an egress event. */
+    fun preview(request: Request): Result = evaluateInternal(request)
+
     fun evaluate(request: Request): Result {
         val result = evaluateInternal(request)
         val payload = request.payload
@@ -151,8 +154,9 @@ class NetworkGate(context: Context) {
     private fun canonicalizeHost(host: String): String {
         val trimmed = host.trim().trimEnd('.').lowercase()
         require(trimmed.isNotEmpty() && trimmed.length <= 253) { "Invalid host." }
+        if (isLoopback(trimmed)) return trimmed
         val ascii = IDN.toASCII(trimmed, IDN.USE_STD3_ASCII_RULES).lowercase()
-        require(ascii.matches(HOST_REGEX) || isLoopback(ascii)) { "Invalid host." }
+        require(ascii.matches(HOST_REGEX)) { "Invalid host." }
         return ascii
     }
 
