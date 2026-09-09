@@ -7,6 +7,7 @@ import android.speech.tts.UtteranceProgressListener
 import java.io.Closeable
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -27,6 +28,13 @@ class ArianaVoiceEngine(
         fun onSpeakingChanged(speaking: Boolean)
         fun onError(message: String)
 
+        /**
+         * Called when the selected Android TTS engine reports the text range
+         * currently being spoken. Engines are allowed not to emit range
+         * callbacks, so callers must keep a fallback animation path.
+         */
+        fun onUtteranceRange(text: String, start: Int, end: Int) = Unit
+
         object NOOP : Listener {
             override fun onReady() = Unit
             override fun onSpeakingChanged(speaking: Boolean) = Unit
@@ -36,6 +44,7 @@ class ArianaVoiceEngine(
 
     private val appContext = context.applicationContext
     private val ready = AtomicBoolean(false)
+    private val utteranceTexts = ConcurrentHashMap<String, String>()
 
     @Volatile
     private var pendingText: String? = null
@@ -67,11 +76,23 @@ class ArianaVoiceEngine(
                     listener.onSpeakingChanged(true)
                 }
 
+                override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                    val id = utteranceId ?: return
+                    val text = utteranceTexts[id] ?: return
+                    val safeStart = start.coerceIn(0, text.length)
+                    val safeEnd = end.coerceIn(safeStart, text.length)
+                    if (safeEnd > safeStart) {
+                        listener.onUtteranceRange(text, safeStart, safeEnd)
+                    }
+                }
+
                 override fun onDone(utteranceId: String?) {
+                    utteranceId?.let(utteranceTexts::remove)
                     listener.onSpeakingChanged(false)
                 }
 
                 override fun onError(utteranceId: String?) {
+                    utteranceId?.let(utteranceTexts::remove)
                     listener.onSpeakingChanged(false)
                     listener.onError("TTS playback failed")
                 }
@@ -103,13 +124,18 @@ class ArianaVoiceEngine(
             return false
         }
 
+        if (flush) utteranceTexts.clear()
+
         val queueMode = if (flush) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
         val utteranceId = "ariana-${UUID.randomUUID()}"
+        utteranceTexts[utteranceId] = clean
         val result = engine.speak(clean, queueMode, Bundle(), utteranceId)
+        if (result != TextToSpeech.SUCCESS) utteranceTexts.remove(utteranceId)
         return result == TextToSpeech.SUCCESS
     }
 
     fun stop() {
+        utteranceTexts.clear()
         tts?.stop()
         listener.onSpeakingChanged(false)
     }
@@ -117,6 +143,7 @@ class ArianaVoiceEngine(
     override fun close() {
         ready.set(false)
         pendingText = null
+        utteranceTexts.clear()
         tts?.stop()
         tts?.shutdown()
         tts = null
