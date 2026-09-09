@@ -110,6 +110,9 @@ class ArianaVoiceEngine(
 
     fun isReady(): Boolean = ready.get()
 
+    /** Package name of the Android TTS engine currently selected by the system. */
+    fun currentEnginePackage(): String? = tts?.defaultEngine
+
     /**
      * Speaks locally through Android TTS. If the engine is still starting,
      * the most recent text is kept and spoken once initialization completes.
