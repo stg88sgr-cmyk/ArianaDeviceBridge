@@ -37,6 +37,10 @@
         </activity>
 
         <activity
+            android:name=".ui.ConversationActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.DeviceGrantsActivity"
             android:exported="false"
             android:launchMode="singleTop" />
