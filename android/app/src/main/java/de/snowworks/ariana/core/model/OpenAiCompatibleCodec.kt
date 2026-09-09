@@ -8,6 +8,11 @@ import org.json.JSONObject
  * This is a protocol adapter, not a hard-coded OpenAI connection.
  */
 object OpenAiCompatibleCodec {
+    private const val MAX_USER_CHARS = 64 * 1024
+    private const val MAX_SYSTEM_CHARS = 32 * 1024
+    private const val MAX_MEMORY_CHARS = 64 * 1024
+    private const val MAX_RESPONSE_CHARS = 256 * 1024
+
     fun requestJson(
         model: String,
         systemText: String,
@@ -50,12 +55,5 @@ object OpenAiCompatibleCodec {
         require(content.isNotBlank()) { "Model returned an empty message." }
         require(content.length <= MAX_RESPONSE_CHARS) { "Model response text is too long." }
         return content
-    }
-
-    companion object {
-        private const val MAX_USER_CHARS = 64 * 1024
-        private const val MAX_SYSTEM_CHARS = 32 * 1024
-        private const val MAX_MEMORY_CHARS = 64 * 1024
-        private const val MAX_RESPONSE_CHARS = 256 * 1024
     }
 }
