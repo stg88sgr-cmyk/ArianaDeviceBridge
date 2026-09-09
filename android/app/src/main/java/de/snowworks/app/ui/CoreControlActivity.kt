@@ -104,6 +104,11 @@ class CoreControlActivity : AppCompatActivity() {
         })
 
         root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Memory Vault verwalten"
+            setOnClickListener { startActivity(Intent(this@CoreControlActivity, MemoryActivity::class.java)) }
+        })
+
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "Gerätefreigaben öffnen"
             setOnClickListener { startActivity(Intent(this@CoreControlActivity, DeviceGrantsActivity::class.java)) }
         })
