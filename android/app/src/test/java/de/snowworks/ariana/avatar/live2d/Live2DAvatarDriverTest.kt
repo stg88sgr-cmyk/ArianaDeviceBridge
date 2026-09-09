@@ -53,11 +53,11 @@ class Live2DAvatarDriverTest {
 
         driver.show()
         driver.show()
-        assertTrue(sink.isVisible)
+        assertTrue(sink.visibleState)
         assertEquals(1, sink.visibilityWrites)
 
         driver.close()
-        assertFalse(sink.isVisible)
+        assertFalse(sink.visibleState)
         assertEquals(2, sink.visibilityWrites)
         assertTrue(sink.closed)
     }
@@ -65,14 +65,14 @@ class Live2DAvatarDriverTest {
     private class RecordingSink : Live2DFrameSink {
         val parameters = linkedMapOf<String, Float>()
         var lastExpression: String? = null
-        var isVisible = false
+        var visibleState = false
         var commits = 0
         var parameterWrites = 0
         var visibilityWrites = 0
         var closed = false
 
         override fun setVisible(visible: Boolean) {
-            isVisible = visible
+            visibleState = visible
             visibilityWrites += 1
         }
 
