@@ -40,6 +40,31 @@ class DeviceGrantsActivity : AppCompatActivity() {
     private var masterSwitch: SwitchCompat? = null
     private var voiceStatus: TextView? = null
     private var lipSyncStatus: TextView? = null
+    private var presenceDiagnosticsStatus: TextView? = null
+
+    private val presenceUiHandler = Handler(Looper.getMainLooper())
+    private val presenceDiagnosticsTicker = object : Runnable {
+        override fun run() {
+            if (!::presence.isInitialized || isFinishing || isDestroyed) return
+            val d = presence.diagnostics()
+            presenceDiagnosticsStatus?.text = buildString {
+                append("Diagnose: ${d.compactLabel()}")
+                append(" · spoken=${d.utterancesStarted}")
+                append(" · ranges=${d.rangeCallbacksObserved}")
+            }
+            if (d.speaking) {
+                lipSyncStatus?.text = when (d.lipSyncMode) {
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.TEXT_TIMING ->
+                        "Lip-Sync: Text-Timing aktiv"
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.FALLBACK_PULSE ->
+                        "Lip-Sync: Fallback-Puls aktiv"
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.IDLE ->
+                        "Lip-Sync: bereit"
+                }
+            }
+            presenceUiHandler.postDelayed(this, PRESENCE_DIAGNOSTICS_REFRESH_MS)
+        }
+    }
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -83,16 +108,18 @@ class DeviceGrantsActivity : AppCompatActivity() {
             voiceListener = object : ArianaVoiceEngine.Listener {
                 override fun onReady() {
                     runOnUiThread {
-                        voiceStatus?.text = "Stimme: bereit · Android System-TTS · de-DE"
+                        val engine = presence.currentVoiceEnginePackage() ?: "unbekannt"
+                        voiceStatus?.text = "Stimme: bereit · de-DE · $engine"
                     }
                 }
 
                 override fun onSpeakingChanged(speaking: Boolean) {
                     runOnUiThread {
+                        val engine = presence.currentVoiceEnginePackage() ?: "unbekannt"
                         voiceStatus?.text = if (speaking) {
-                            "Stimme: spricht"
+                            "Stimme: spricht · $engine"
                         } else {
-                            "Stimme: bereit · Android System-TTS · de-DE"
+                            "Stimme: bereit · de-DE · $engine"
                         }
                         if (!speaking) lipSyncStatus?.text = "Lip-Sync: bereit"
                     }
@@ -121,9 +148,17 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        presenceUiHandler.removeCallbacks(presenceDiagnosticsTicker)
+        presenceUiHandler.post(presenceDiagnosticsTicker)
+    }
+
+    override fun onPause() {
+        presenceUiHandler.removeCallbacks(presenceDiagnosticsTicker)
+        super.onPause()
     }
 
     override fun onDestroy() {
+        presenceUiHandler.removeCallbacksAndMessages(null)
         presence.close()
         super.onDestroy()
     }
@@ -232,6 +267,13 @@ class DeviceGrantsActivity : AppCompatActivity() {
         )
         card.addView(lipSyncStatus)
 
+        presenceDiagnosticsStatus = text(
+            "Diagnose: startet …",
+            12f,
+            Color.parseColor("#9E8EBB"),
+        )
+        card.addView(presenceDiagnosticsStatus)
+
         val preview = ArianaMotionPreviewView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -255,6 +297,19 @@ class DeviceGrantsActivity : AppCompatActivity() {
             maxLines = 5
         }
         card.addView(input)
+
+        card.addView(
+            MaterialButton(this).apply {
+                text = "Presence-Selbsttest"
+                setOnClickListener {
+                    input.setText(ArianaPresenceController.SELF_TEST_PHRASE)
+                    val accepted = presence.sayPresenceSelfTest()
+                    if (!accepted && !presence.isVoiceReady()) {
+                        voiceStatus?.text = "Stimme: startet … Selbsttest ist vorgemerkt"
+                    }
+                }
+            },
+        )
 
         val actions = row()
         actions.addView(
@@ -468,5 +523,6 @@ class DeviceGrantsActivity : AppCompatActivity() {
 
     companion object {
         private const val TEST_VIEW_REFRESH_MS = 150L
+        private const val PRESENCE_DIAGNOSTICS_REFRESH_MS = 250L
     }
 }
