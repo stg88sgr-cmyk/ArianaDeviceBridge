@@ -171,6 +171,13 @@ class ArianaPresenceController(
     fun say(text: String, interruptCurrentSpeech: Boolean = true): Boolean =
         voice.speak(text = text, flush = interruptCurrentSpeech)
 
+    /**
+     * German phrase deliberately rich in vowel shapes. It gives one-button
+     * device proof for TTS, text timing and mouth-form animation once wired to
+     * the debug surface or bridge.
+     */
+    fun sayPresenceSelfTest(): Boolean = say(SELF_TEST_PHRASE)
+
     fun stopSpeaking() {
         voice.stop()
     }
@@ -178,6 +185,14 @@ class ArianaPresenceController(
     fun isVoiceReady(): Boolean = voice.isReady()
 
     fun currentVoiceEnginePackage(): String? = voice.currentEnginePackage()
+
+    fun diagnostics(): PresenceDiagnostics = PresenceDiagnostics(
+        voiceReady = voice.isReady(),
+        voiceEnginePackage = voice.currentEnginePackage(),
+        utterancesStarted = voice.utterancesStartedCount(),
+        rangeCallbacksObserved = voice.rangeCallbackCount(),
+        speaking = avatarState.speaking,
+    )
 
     fun currentAvatarState(): AvatarState = avatarState
 
@@ -228,9 +243,12 @@ class ArianaPresenceController(
         avatar.close()
     }
 
-    private companion object {
-        const val IDLE_TICK_MS = 64L
-        const val MOUTH_TICK_MS = 48L
-        const val MOUTH_WAVE_MS = 88.0
+    companion object {
+        const val SELF_TEST_PHRASE =
+            "Ariana prüft Auge, Atem und Ausdruck. Esel, Igel, Ofen, Uhu, Ähre, Öl und Übung."
+
+        private const val IDLE_TICK_MS = 64L
+        private const val MOUTH_TICK_MS = 48L
+        private const val MOUTH_WAVE_MS = 88.0
     }
 }
