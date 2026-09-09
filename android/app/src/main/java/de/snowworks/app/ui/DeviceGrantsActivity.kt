@@ -33,11 +33,13 @@ class DeviceGrantsActivity : AppCompatActivity() {
 
     private lateinit var api: ArianaDeviceApi
     private lateinit var presence: ArianaPresenceController
+    private val avatarDriver = PreviewAvatarDriver()
     private var pendingFeature: Feature? = null
     private val statusViews = mutableMapOf<Feature, TextView>()
     private val switches = mutableMapOf<Feature, SwitchCompat>()
     private var masterSwitch: SwitchCompat? = null
     private var voiceStatus: TextView? = null
+    private var lipSyncStatus: TextView? = null
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -77,6 +79,7 @@ class DeviceGrantsActivity : AppCompatActivity() {
         api = ArianaDeviceApi(this)
         presence = ArianaPresenceController(
             context = this,
+            avatar = avatarDriver,
             voiceListener = object : ArianaVoiceEngine.Listener {
                 override fun onReady() {
                     runOnUiThread {
@@ -91,6 +94,16 @@ class DeviceGrantsActivity : AppCompatActivity() {
                         } else {
                             "Stimme: bereit · Android System-TTS · de-DE"
                         }
+                        if (!speaking) lipSyncStatus?.text = "Lip-Sync: bereit"
+                    }
+                }
+
+                override fun onUtteranceRange(text: String, start: Int, end: Int) {
+                    val fragment = text.substring(start, end)
+                        .replace('\n', ' ')
+                        .take(24)
+                    runOnUiThread {
+                        lipSyncStatus?.text = "Lip-Sync: Text-Timing aktiv · $fragment"
                     }
                 }
 
@@ -199,7 +212,7 @@ class DeviceGrantsActivity : AppCompatActivity() {
         card.addView(text("Ariana Presence", 18f, Color.parseColor("#F1E9FF")))
         card.addView(
             text(
-                "Lokaler Sprachtest über die bevorzugte Android-TTS-Engine.",
+                "Lokaler Sprachtest + renderer-neutraler Lip-Sync Motion Probe.",
                 14f,
                 Color.parseColor("#B9A8D6"),
             ),
@@ -212,8 +225,28 @@ class DeviceGrantsActivity : AppCompatActivity() {
         )
         card.addView(voiceStatus)
 
+        lipSyncStatus = text(
+            "Lip-Sync: bereit",
+            13f,
+            Color.parseColor("#B9A8D6"),
+        )
+        card.addView(lipSyncStatus)
+
+        val preview = ArianaMotionPreviewView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(240),
+            ).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(10)
+            }
+        }
+        card.addView(preview)
+        avatarDriver.attach(preview)
+        presence.showAvatar()
+
         val input = EditText(this).apply {
-            setText("Hallo. Hier ist Ariana. Die lokale Stimme ist verbunden.")
+            setText("Hallo. Hier ist Ariana. Meine lokale Stimme und mein Bewegungszustand sind verbunden.")
             setTextColor(Color.parseColor("#F3EFF8"))
             setHintTextColor(Color.parseColor("#80758F"))
             setBackgroundColor(Color.parseColor("#0F0C18"))
