@@ -9,6 +9,7 @@ import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Thin local voice adapter for Ariana.
@@ -45,6 +46,8 @@ class ArianaVoiceEngine(
     private val appContext = context.applicationContext
     private val ready = AtomicBoolean(false)
     private val utteranceTexts = ConcurrentHashMap<String, String>()
+    private val utterancesStarted = AtomicLong(0L)
+    private val rangeCallbacksObserved = AtomicLong(0L)
 
     @Volatile
     private var pendingText: String? = null
@@ -73,6 +76,7 @@ class ArianaVoiceEngine(
         engine.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
+                    utterancesStarted.incrementAndGet()
                     listener.onSpeakingChanged(true)
                 }
 
@@ -82,6 +86,7 @@ class ArianaVoiceEngine(
                     val safeStart = start.coerceIn(0, text.length)
                     val safeEnd = end.coerceIn(safeStart, text.length)
                     if (safeEnd > safeStart) {
+                        rangeCallbacksObserved.incrementAndGet()
                         listener.onUtteranceRange(text, safeStart, safeEnd)
                     }
                 }
@@ -112,6 +117,12 @@ class ArianaVoiceEngine(
 
     /** Package name of the Android TTS engine currently selected by the system. */
     fun currentEnginePackage(): String? = tts?.defaultEngine
+
+    /** Number of utterances that actually reached Android TTS playback. */
+    fun utterancesStartedCount(): Long = utterancesStarted.get()
+
+    /** Number of text-range timing callbacks emitted by the active TTS engine. */
+    fun rangeCallbackCount(): Long = rangeCallbacksObserved.get()
 
     /**
      * Speaks locally through Android TTS. If the engine is still starting,
