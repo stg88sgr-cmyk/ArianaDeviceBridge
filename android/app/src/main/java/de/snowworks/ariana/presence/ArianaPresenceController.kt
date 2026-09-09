@@ -113,6 +113,7 @@ class ArianaPresenceController(
         context = context,
         listener = object : ArianaVoiceEngine.Listener {
             override fun onReady() {
+                publishDiagnostics()
                 voiceListener.onReady()
             }
 
@@ -145,6 +146,7 @@ class ArianaPresenceController(
                             )
                         }
                     }
+                    publishDiagnostics()
                 }
                 voiceListener.onSpeakingChanged(speaking)
             }
@@ -155,16 +157,19 @@ class ArianaPresenceController(
                 val safeEnd = end.coerceIn(safeStart, text.length)
                 val fragment = text.substring(safeStart, safeEnd)
                 mouthTarget = SpeechMouthPlanner.fromText(fragment)
+                publishDiagnostics()
                 voiceListener.onUtteranceRange(text, safeStart, safeEnd)
             }
 
             override fun onError(message: String) {
+                publishDiagnostics()
                 voiceListener.onError(message)
             }
         },
     )
 
     init {
+        PresenceTelemetryStore.publish(diagnostics())
         mainHandler.post(idleTicker)
     }
 
@@ -237,11 +242,16 @@ class ArianaPresenceController(
         avatar.apply(next)
     }
 
+    private fun publishDiagnostics() {
+        if (!closed) PresenceTelemetryStore.publish(diagnostics())
+    }
+
     override fun close() {
         closed = true
         mainHandler.removeCallbacksAndMessages(null)
         voice.close()
         avatar.close()
+        PresenceTelemetryStore.clear()
     }
 
     companion object {
