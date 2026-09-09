@@ -13,8 +13,8 @@ This is the short real-device acceptance pass for Ariana Presence V1 on Stefan's
 1. Open the Snowworks / Ariana device app.
 2. Open the `Ariana Presence` section.
 3. Wait until voice status reports ready.
-4. Confirm the active Android TTS engine package through Presence diagnostics.
-5. Trigger the Presence self-test phrase:
+4. Read the live diagnostics line. It shows the active Android TTS package plus speech/timing counters.
+5. Tap `Presence-Selbsttest`. The app loads and speaks this vowel-rich phrase automatically:
 
    `Ariana prüft Auge, Atem und Ausdruck. Esel, Igel, Ofen, Uhu, Ähre, Öl und Übung.`
 
@@ -24,11 +24,17 @@ This is the short real-device acceptance pass for Ariana Presence V1 on Stefan's
    - idle motion continues but becomes calmer,
    - blink remains natural,
    - no visual jumps occur when speech starts or stops.
-7. After speech completes, verify:
+7. Watch the diagnostics line while the phrase is spoken:
+   - `lip-text-timing` means the active TTS engine is supplying usable Android range callbacks,
+   - `lip-fallback` means the safe pulse fallback is active,
+   - both are valid and should keep the mouth moving.
+8. After speech completes, verify:
    - mouth returns to rest,
    - core returns to idle intensity,
    - breathing / blink / gaze continue,
+   - diagnostics return to `lip-idle`,
    - no repeating callbacks remain active.
+9. Tap `Stop` during a second run and confirm speech stops immediately and the avatar returns to idle.
 
 ## Diagnostics interpretation
 
@@ -37,17 +43,18 @@ This is the short real-device acceptance pass for Ariana Presence V1 on Stefan's
 - `voiceReady`
 - `voiceEnginePackage`
 - `utterancesStarted`
-- `rangeCallbacksObserved`
+- `rangeCallbacksObserved` (lifetime counter for this engine session)
+- `currentUtteranceRangeCallbacks` (current utterance only)
 - `speaking`
 - derived `lipSyncMode`
 
 Expected lip-sync modes:
 
 - `IDLE` when Ariana is not speaking.
-- `TEXT_TIMING` while speaking if the selected TTS engine emits Android range callbacks.
-- `FALLBACK_PULSE` while speaking if no text-range callbacks are emitted.
+- `TEXT_TIMING` while speaking if the current utterance receives Android range callbacks.
+- `FALLBACK_PULSE` while speaking if the current utterance receives no range callbacks.
 
-Both speaking modes are valid. `TEXT_TIMING` gives better vowel-shaped motion; `FALLBACK_PULSE` prevents a frozen mouth on engines without range timing.
+The mode decision is utterance-local. A previous well-timed phrase cannot accidentally make a later fallback phrase appear as text-timed.
 
 ## Pass criteria
 
@@ -69,6 +76,7 @@ If something fails, record only these facts:
 - whether voice audio played
 - `utterancesStarted`
 - `rangeCallbacksObserved`
+- `currentUtteranceRangeCallbacks`
 - visible lip-sync mode
 - exact symptom
 
