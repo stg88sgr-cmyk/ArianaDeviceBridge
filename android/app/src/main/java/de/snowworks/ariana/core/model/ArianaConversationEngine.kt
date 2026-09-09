@@ -11,6 +11,7 @@ import de.snowworks.ariana.core.MemoryVault
 class ArianaConversationEngine(context: Context) {
     data class PreparedRequest(
         val provider: ModelProviderStore.Provider,
+        val userText: String,
         val memory: MemoryContextBuilder.Selection,
         val payloadJson: String,
     )
@@ -39,11 +40,18 @@ class ArianaConversationEngine(context: Context) {
             userText = userText,
             memoryContext = memory.renderedText,
         )
-        return PreparedRequest(provider, memory, payload)
+        return PreparedRequest(provider, userText, memory, payload)
     }
 
     /** The caller should invoke this only after a visible user send action. */
     fun send(prepared: PreparedRequest): Reply {
+        val active = providerStore.active() ?: error("Model provider was disabled after preparation. Prepare again.")
+        require(
+            active.id == prepared.provider.id &&
+                active.endpoint == prepared.provider.endpoint &&
+                active.model == prepared.provider.model,
+        ) { "Model provider changed after preparation. Prepare again before sending." }
+
         val response = router.sendJson(prepared.payloadJson)
         val text = OpenAiCompatibleCodec.responseText(response.body)
         audit.append(
