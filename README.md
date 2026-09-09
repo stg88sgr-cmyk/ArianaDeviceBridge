@@ -37,6 +37,7 @@ The corresponding pull request remains a draft until physical-device validation 
 - Android system TTS adapter
 - German locale (`de-DE`)
 - compatible with a locally selected Android TTS engine such as HayaiTTS
+- selected TTS-engine package can be queried for diagnostics
 - speaking-state callbacks
 - spoken text-range callbacks when exposed by the active TTS engine
 - text-timing lip-sync with mouth openness + mouth form
@@ -136,7 +137,7 @@ After installing the debug APK:
 4. Confirm Android's preferred TTS engine is configured as intended.
 5. Press **Sprechen**.
 6. Verify local speech playback.
-7. Watch the Motion Probe for mouth movement, blinking, gaze drift, breathing and core glow.
+7. Watch the Motion Probe for mouth movement, blinking, gaze drift, head movement, breathing and core glow.
 8. Press **Stop** and verify speech stops immediately.
 
 The Motion Probe is intentionally abstract. It is only a runtime test surface, not the final Ariana visual design.
