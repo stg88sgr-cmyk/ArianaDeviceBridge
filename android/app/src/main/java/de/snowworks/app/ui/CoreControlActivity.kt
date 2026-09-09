@@ -99,6 +99,11 @@ class CoreControlActivity : AppCompatActivity() {
         root.addView(text("Lokaler Speicher, Netzwerk-Gate, Modell-Router und Prüfprotokoll. Externer Zugriff startet gesperrt.", 14f, Color.parseColor("#8A9AA6")))
 
         root.addView(MaterialButton(this).apply {
+            text = "Conversation Gate öffnen"
+            setOnClickListener { startActivity(Intent(this@CoreControlActivity, ConversationActivity::class.java)) }
+        })
+
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
             text = "Gerätefreigaben öffnen"
             setOnClickListener { startActivity(Intent(this@CoreControlActivity, DeviceGrantsActivity::class.java)) }
         })
