@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,15 +25,19 @@ import de.snowworks.ariana.Feature
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.files.TreePermissionStore
+import de.snowworks.ariana.presence.ArianaPresenceController
 import de.snowworks.ariana.session.ArianaCaptureService
+import de.snowworks.ariana.voice.ArianaVoiceEngine
 
 class DeviceGrantsActivity : AppCompatActivity() {
 
     private lateinit var api: ArianaDeviceApi
+    private lateinit var presence: ArianaPresenceController
     private var pendingFeature: Feature? = null
     private val statusViews = mutableMapOf<Feature, TextView>()
     private val switches = mutableMapOf<Feature, SwitchCompat>()
     private var masterSwitch: SwitchCompat? = null
+    private var voiceStatus: TextView? = null
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -70,6 +75,32 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
+        presence = ArianaPresenceController(
+            context = this,
+            voiceListener = object : ArianaVoiceEngine.Listener {
+                override fun onReady() {
+                    runOnUiThread {
+                        voiceStatus?.text = "Stimme: bereit · Android System-TTS · de-DE"
+                    }
+                }
+
+                override fun onSpeakingChanged(speaking: Boolean) {
+                    runOnUiThread {
+                        voiceStatus?.text = if (speaking) {
+                            "Stimme: spricht"
+                        } else {
+                            "Stimme: bereit · Android System-TTS · de-DE"
+                        }
+                    }
+                }
+
+                override fun onError(message: String) {
+                    runOnUiThread {
+                        voiceStatus?.text = "Stimme: Fehler · $message"
+                    }
+                }
+            },
+        )
         LocalBridgeServer.start(this)
         setContentView(buildUi())
     }
@@ -77,6 +108,11 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+    }
+
+    override fun onDestroy() {
+        presence.close()
+        super.onDestroy()
     }
 
     private fun buildUi(): ScrollView {
@@ -128,11 +164,14 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 setTextColor(Color.WHITE)
                 setOnClickListener {
                     api.stopAll()
+                    presence.stopSpeaking()
                     toast("Alles gestoppt. Neue Aktionen sind gesperrt.")
                     refresh()
                 }
             },
         )
+
+        root.addView(presenceCard(::dp))
 
         Feature.entries.forEach { feature ->
             root.addView(featureCard(feature, ::dp))
@@ -142,6 +181,69 @@ class DeviceGrantsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             addView(root)
         }
+    }
+
+    private fun presenceCard(dp: (Int) -> Int): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#171325"))
+            setPadding(dp(16))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            lp.topMargin = dp(12)
+            layoutParams = lp
+        }
+
+        card.addView(text("Ariana Presence", 18f, Color.parseColor("#F1E9FF")))
+        card.addView(
+            text(
+                "Lokaler Sprachtest über die bevorzugte Android-TTS-Engine.",
+                14f,
+                Color.parseColor("#B9A8D6"),
+            ),
+        )
+
+        voiceStatus = text(
+            if (presence.isVoiceReady()) "Stimme: bereit · de-DE" else "Stimme: startet …",
+            13f,
+            Color.parseColor("#D7CCEA"),
+        )
+        card.addView(voiceStatus)
+
+        val input = EditText(this).apply {
+            setText("Hallo. Hier ist Ariana. Die lokale Stimme ist verbunden.")
+            setTextColor(Color.parseColor("#F3EFF8"))
+            setHintTextColor(Color.parseColor("#80758F"))
+            setBackgroundColor(Color.parseColor("#0F0C18"))
+            setPadding(dp(12))
+            minLines = 2
+            maxLines = 5
+        }
+        card.addView(input)
+
+        val actions = row()
+        actions.addView(
+            MaterialButton(this).apply {
+                text = "Sprechen"
+                setOnClickListener {
+                    val accepted = presence.say(input.text?.toString().orEmpty())
+                    if (!accepted && !presence.isVoiceReady()) {
+                        voiceStatus?.text = "Stimme: startet … Text ist vorgemerkt"
+                    }
+                }
+            },
+        )
+        actions.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Stop"
+                setOnClickListener { presence.stopSpeaking() }
+            },
+        )
+        card.addView(actions)
+
+        return card
     }
 
     private fun featureCard(feature: Feature, dp: (Int) -> Int): LinearLayout {
