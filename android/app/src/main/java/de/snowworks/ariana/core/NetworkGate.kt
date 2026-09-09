@@ -107,7 +107,7 @@ class NetworkGate(context: Context) {
                 destination = request.destination.take(MAX_DESTINATION_CHARS),
                 provider = request.provider?.take(MAX_PROVIDER_CHARS),
                 payloadBytes = payload?.size,
-                payloadSha256 = payload?.let(AuditLog::sha256),
+                payloadSha256 = payload?.let { AuditLog.sha256(it) },
             ),
         )
         return result
