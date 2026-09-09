@@ -1,10 +1,15 @@
 package de.snowworks.ariana.presence
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import de.snowworks.ariana.avatar.AvatarDriver
 import de.snowworks.ariana.avatar.AvatarState
+import de.snowworks.ariana.avatar.SpeechMouthPlanner
 import de.snowworks.ariana.voice.ArianaVoiceEngine
 import java.io.Closeable
+import kotlin.math.sin
 
 /**
  * Stable composition point for Ariana's on-device presence layer.
@@ -21,6 +26,35 @@ class ArianaPresenceController(
     @Volatile
     private var avatarState = AvatarState()
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    @Volatile
+    private var mouthTarget = SpeechMouthPlanner.REST
+
+    @Volatile
+    private var mouthAnimationStartedAt = 0L
+
+    private val mouthTicker = object : Runnable {
+        override fun run() {
+            if (!avatarState.speaking) return
+
+            val elapsed = SystemClock.uptimeMillis() - mouthAnimationStartedAt
+            val wave = ((sin(elapsed / MOUTH_WAVE_MS) + 1.0) * 0.5).toFloat()
+            val pulse = 0.64f + (wave * 0.36f)
+            val target = mouthTarget
+
+            updateAvatar {
+                it.copy(
+                    mouthOpen = (target.open * pulse).coerceIn(0f, 1f),
+                    mouthForm = target.form,
+                    breath = (0.48f + wave * 0.18f).coerceIn(0f, 1f),
+                    coreGlow = (0.78f + wave * 0.18f).coerceIn(0f, 1f),
+                )
+            }
+            mainHandler.postDelayed(this, MOUTH_TICK_MS)
+        }
+    }
+
     private val voice = ArianaVoiceEngine(
         context = context,
         listener = object : ArianaVoiceEngine.Listener {
@@ -29,15 +63,41 @@ class ArianaPresenceController(
             }
 
             override fun onSpeakingChanged(speaking: Boolean) {
-                updateAvatar {
-                    it.copy(
-                        speaking = speaking,
-                        // Binary placeholder until viseme/amplitude lip-sync lands.
-                        mouthOpen = if (speaking) 0.35f else 0f,
-                        coreGlow = if (speaking) 0.9f else 0.65f,
-                    )
+                mainHandler.post {
+                    if (speaking) {
+                        mouthTarget = SpeechMouthPlanner.GENERIC
+                        mouthAnimationStartedAt = SystemClock.uptimeMillis()
+                        updateAvatar {
+                            it.copy(
+                                speaking = true,
+                                mouthOpen = 0.28f,
+                                mouthForm = 0f,
+                                coreGlow = 0.86f,
+                            )
+                        }
+                        mainHandler.removeCallbacks(mouthTicker)
+                        mainHandler.post(mouthTicker)
+                    } else {
+                        mainHandler.removeCallbacks(mouthTicker)
+                        mouthTarget = SpeechMouthPlanner.REST
+                        updateAvatar {
+                            it.copy(
+                                speaking = false,
+                                mouthOpen = 0f,
+                                mouthForm = 0f,
+                                breath = 0.5f,
+                                coreGlow = 0.65f,
+                            )
+                        }
+                    }
                 }
                 voiceListener.onSpeakingChanged(speaking)
+            }
+
+            override fun onUtteranceRange(text: String, start: Int, end: Int) {
+                val fragment = text.substring(start, end)
+                mouthTarget = SpeechMouthPlanner.fromText(fragment)
+                voiceListener.onUtteranceRange(text, start, end)
             }
 
             override fun onError(message: String) {
@@ -92,7 +152,13 @@ class ArianaPresenceController(
     }
 
     override fun close() {
+        mainHandler.removeCallbacksAndMessages(null)
         voice.close()
         avatar.close()
+    }
+
+    private companion object {
+        const val MOUTH_TICK_MS = 48L
+        const val MOUTH_WAVE_MS = 88.0
     }
 }
