@@ -12,7 +12,6 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
@@ -20,13 +19,13 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Minimal local-only HTTP bridge. It binds explicitly to loopback and never to
- * Wi-Fi/LAN interfaces. Sensitive start actions are intentionally not exposed
- * until a visible user-confirmation flow is attached.
+ * Minimal local-only HTTP bridge. It is locked to the fail-closed
+ * [BridgeFirewallPolicy], so Wi-Fi/LAN/VPN exposure is rejected even if future
+ * bridge code is refactored. Sensitive start actions remain unavailable until
+ * a visible user-confirmation flow is attached.
  */
 object LocalBridgeServer {
-    const val PORT = 8765
-    private const val MAX_BODY_BYTES = 8 * 1024
+    const val PORT = BridgeFirewallPolicy.PORT
     private val running = AtomicBoolean(false)
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile private var worker: Thread? = null
@@ -43,10 +42,15 @@ object LocalBridgeServer {
         val gate = ArianaGate(app)
         if (!gate.isMasterEnabled || gate.isBlocked) return
         val token = BridgeTokenStore(app).getOrCreate()
+        val bindAddress = runCatching { BridgeFirewallPolicy.bindAddress() }.getOrElse {
+            running.set(false)
+            return
+        }
+
         running.set(true)
         worker = Thread({
             try {
-                ServerSocket(PORT, 8, InetAddress.getByName("127.0.0.1")).use { server ->
+                ServerSocket(PORT, 8, bindAddress).use { server ->
                     server.soTimeout = 1000
                     serverSocket = server
                     while (running.get()) {
@@ -80,9 +84,14 @@ object LocalBridgeServer {
 
     private fun handle(context: Context, socket: Socket, token: String) {
         socket.soTimeout = 2000
+
+        if (!BridgeFirewallPolicy.isPermittedPeer(socket.inetAddress)) {
+            return respond(socket, 403, error("REMOTE_PEER_BLOCKED", "Bridge akzeptiert nur lokale Loopback-Verbindungen."))
+        }
         if (!allowRequest()) {
             return respond(socket, 429, error("RATE_LIMITED", "Zu viele lokale Bridge-Anfragen."))
         }
+
         val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
         val requestLine = reader.readLine() ?: return
         val parts = requestLine.split(' ')
@@ -100,7 +109,7 @@ object LocalBridgeServer {
             return respond(socket, 401, error("UNAUTHORIZED", "Lokales Bridge-Token fehlt oder ist ungültig."))
         }
         val length = headers["content-length"]?.toIntOrNull() ?: 0
-        if (length < 0 || length > MAX_BODY_BYTES) {
+        if (length < 0 || length > BridgeFirewallPolicy.MAX_BODY_BYTES) {
             return respond(socket, 413, error("REQUEST_TOO_LARGE", "Request ist zu groß."))
         }
         val body = if (length > 0) {
@@ -130,7 +139,8 @@ object LocalBridgeServer {
             .put("requestId", UUID.randomUUID().toString())
             .put("masterEnabled", gate.isMasterEnabled)
             .put("blocked", gate.isBlocked)
-            .put("bridge", "127.0.0.1:$PORT")
+            .put("bridge", BridgeFirewallPolicy.endpointLabel())
+            .put("firewall", "loopback-only")
             .put("activeSessions", JSONArray(SessionRegistry.snapshot().map { it.id }))
     }
 
@@ -206,7 +216,7 @@ object LocalBridgeServer {
             windowStartedAt = now
             requestsInWindow = 0
         }
-        if (requestsInWindow >= 60) return@synchronized false
+        if (requestsInWindow >= BridgeFirewallPolicy.MAX_REQUESTS_PER_MINUTE) return@synchronized false
         requestsInWindow += 1
         true
     }
@@ -221,6 +231,7 @@ object LocalBridgeServer {
         val reason = when (status) {
             200 -> "OK"
             401 -> "Unauthorized"
+            403 -> "Forbidden"
             413 -> "Payload Too Large"
             429 -> "Too Many Requests"
             else -> "Bad Request"
