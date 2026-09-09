@@ -14,6 +14,8 @@ import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.core.AuditLog
 import de.snowworks.ariana.core.MemoryVault
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.UUID
 
 /** Visible, local-only memory management for the X-Ariana vault. */
@@ -26,8 +28,9 @@ class MemoryActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri == null) return@registerForActivityResult
             val json = runCatching {
-                contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
-                    ?: error("Datei konnte nicht geöffnet werden.")
+                contentResolver.openInputStream(uri)?.let { stream ->
+                    String(readLimited(stream, MAX_IMPORT_BYTES), Charsets.UTF_8)
+                } ?: error("Datei konnte nicht geöffnet werden.")
             }.getOrElse { error ->
                 toast("Import konnte nicht gelesen werden: ${error.message ?: "Unbekannter Fehler"}")
                 return@registerForActivityResult
@@ -203,6 +206,20 @@ class MemoryActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun readLimited(stream: InputStream, limit: Int): ByteArray = stream.use { input ->
+        val output = ByteArrayOutputStream(minOf(limit, INITIAL_BUFFER_BYTES))
+        val buffer = ByteArray(READ_BUFFER_BYTES)
+        var total = 0
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= limit) { "Importdatei ist größer als 8 MiB." }
+            output.write(buffer, 0, read)
+        }
+        output.toByteArray()
+    }
+
     private fun refresh() {
         if (!::vault.isInitialized || !::status.isInitialized) return
         val count = runCatching { vault.list().size }.getOrDefault(-1)
@@ -218,5 +235,11 @@ class MemoryActivity : AppCompatActivity() {
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    companion object {
+        private const val MAX_IMPORT_BYTES = 8 * 1024 * 1024
+        private const val INITIAL_BUFFER_BYTES = 16 * 1024
+        private const val READ_BUFFER_BYTES = 8 * 1024
     }
 }
