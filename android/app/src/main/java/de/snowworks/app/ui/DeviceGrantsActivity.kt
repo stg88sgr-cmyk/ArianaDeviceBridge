@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,15 +25,46 @@ import de.snowworks.ariana.Feature
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.files.TreePermissionStore
+import de.snowworks.ariana.presence.ArianaPresenceController
 import de.snowworks.ariana.session.ArianaCaptureService
+import de.snowworks.ariana.voice.ArianaVoiceEngine
 
 class DeviceGrantsActivity : AppCompatActivity() {
 
     private lateinit var api: ArianaDeviceApi
+    private lateinit var presence: ArianaPresenceController
+    private val avatarDriver = PreviewAvatarDriver()
     private var pendingFeature: Feature? = null
     private val statusViews = mutableMapOf<Feature, TextView>()
     private val switches = mutableMapOf<Feature, SwitchCompat>()
     private var masterSwitch: SwitchCompat? = null
+    private var voiceStatus: TextView? = null
+    private var lipSyncStatus: TextView? = null
+    private var presenceDiagnosticsStatus: TextView? = null
+
+    private val presenceUiHandler = Handler(Looper.getMainLooper())
+    private val presenceDiagnosticsTicker = object : Runnable {
+        override fun run() {
+            if (!::presence.isInitialized || isFinishing || isDestroyed) return
+            val d = presence.diagnostics()
+            presenceDiagnosticsStatus?.text = buildString {
+                append("Diagnose: ${d.compactLabel()}")
+                append(" · spoken=${d.utterancesStarted}")
+                append(" · ranges=${d.rangeCallbacksObserved}")
+            }
+            if (d.speaking) {
+                lipSyncStatus?.text = when (d.lipSyncMode) {
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.TEXT_TIMING ->
+                        "Lip-Sync: Text-Timing aktiv"
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.FALLBACK_PULSE ->
+                        "Lip-Sync: Fallback-Puls aktiv"
+                    de.snowworks.ariana.presence.PresenceDiagnostics.LipSyncMode.IDLE ->
+                        "Lip-Sync: bereit"
+                }
+            }
+            presenceUiHandler.postDelayed(this, PRESENCE_DIAGNOSTICS_REFRESH_MS)
+        }
+    }
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -70,6 +102,45 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
+        presence = ArianaPresenceController(
+            context = this,
+            avatar = avatarDriver,
+            voiceListener = object : ArianaVoiceEngine.Listener {
+                override fun onReady() {
+                    runOnUiThread {
+                        val engine = presence.currentVoiceEnginePackage() ?: "unbekannt"
+                        voiceStatus?.text = "Stimme: bereit · de-DE · $engine"
+                    }
+                }
+
+                override fun onSpeakingChanged(speaking: Boolean) {
+                    runOnUiThread {
+                        val engine = presence.currentVoiceEnginePackage() ?: "unbekannt"
+                        voiceStatus?.text = if (speaking) {
+                            "Stimme: spricht · $engine"
+                        } else {
+                            "Stimme: bereit · de-DE · $engine"
+                        }
+                        if (!speaking) lipSyncStatus?.text = "Lip-Sync: bereit"
+                    }
+                }
+
+                override fun onUtteranceRange(text: String, start: Int, end: Int) {
+                    val fragment = text.substring(start, end)
+                        .replace('\n', ' ')
+                        .take(24)
+                    runOnUiThread {
+                        lipSyncStatus?.text = "Lip-Sync: Text-Timing aktiv · $fragment"
+                    }
+                }
+
+                override fun onError(message: String) {
+                    runOnUiThread {
+                        voiceStatus?.text = "Stimme: Fehler · $message"
+                    }
+                }
+            },
+        )
         LocalBridgeServer.start(this)
         setContentView(buildUi())
     }
@@ -77,6 +148,19 @@ class DeviceGrantsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        presenceUiHandler.removeCallbacks(presenceDiagnosticsTicker)
+        presenceUiHandler.post(presenceDiagnosticsTicker)
+    }
+
+    override fun onPause() {
+        presenceUiHandler.removeCallbacks(presenceDiagnosticsTicker)
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        presenceUiHandler.removeCallbacksAndMessages(null)
+        presence.close()
+        super.onDestroy()
     }
 
     private fun buildUi(): ScrollView {
@@ -128,11 +212,14 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 setTextColor(Color.WHITE)
                 setOnClickListener {
                     api.stopAll()
+                    presence.stopSpeaking()
                     toast("Alles gestoppt. Neue Aktionen sind gesperrt.")
                     refresh()
                 }
             },
         )
+
+        root.addView(presenceCard(::dp))
 
         Feature.entries.forEach { feature ->
             root.addView(featureCard(feature, ::dp))
@@ -142,6 +229,109 @@ class DeviceGrantsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             addView(root)
         }
+    }
+
+    private fun presenceCard(dp: (Int) -> Int): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#171325"))
+            setPadding(dp(16))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            lp.topMargin = dp(12)
+            layoutParams = lp
+        }
+
+        card.addView(text("Ariana Presence", 18f, Color.parseColor("#F1E9FF")))
+        card.addView(
+            text(
+                "Lokaler Sprachtest + renderer-neutraler Lip-Sync Motion Probe.",
+                14f,
+                Color.parseColor("#B9A8D6"),
+            ),
+        )
+
+        voiceStatus = text(
+            if (presence.isVoiceReady()) "Stimme: bereit · de-DE" else "Stimme: startet …",
+            13f,
+            Color.parseColor("#D7CCEA"),
+        )
+        card.addView(voiceStatus)
+
+        lipSyncStatus = text(
+            "Lip-Sync: bereit",
+            13f,
+            Color.parseColor("#B9A8D6"),
+        )
+        card.addView(lipSyncStatus)
+
+        presenceDiagnosticsStatus = text(
+            "Diagnose: startet …",
+            12f,
+            Color.parseColor("#9E8EBB"),
+        )
+        card.addView(presenceDiagnosticsStatus)
+
+        val preview = ArianaMotionPreviewView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(240),
+            ).apply {
+                topMargin = dp(8)
+                bottomMargin = dp(10)
+            }
+        }
+        card.addView(preview)
+        avatarDriver.attach(preview)
+        presence.showAvatar()
+
+        val input = EditText(this).apply {
+            setText("Hallo. Hier ist Ariana. Meine lokale Stimme und mein Bewegungszustand sind verbunden.")
+            setTextColor(Color.parseColor("#F3EFF8"))
+            setHintTextColor(Color.parseColor("#80758F"))
+            setBackgroundColor(Color.parseColor("#0F0C18"))
+            setPadding(dp(12))
+            minLines = 2
+            maxLines = 5
+        }
+        card.addView(input)
+
+        card.addView(
+            MaterialButton(this).apply {
+                text = "Presence-Selbsttest"
+                setOnClickListener {
+                    input.setText(ArianaPresenceController.SELF_TEST_PHRASE)
+                    val accepted = presence.sayPresenceSelfTest()
+                    if (!accepted && !presence.isVoiceReady()) {
+                        voiceStatus?.text = "Stimme: startet … Selbsttest ist vorgemerkt"
+                    }
+                }
+            },
+        )
+
+        val actions = row()
+        actions.addView(
+            MaterialButton(this).apply {
+                text = "Sprechen"
+                setOnClickListener {
+                    val accepted = presence.say(input.text?.toString().orEmpty())
+                    if (!accepted && !presence.isVoiceReady()) {
+                        voiceStatus?.text = "Stimme: startet … Text ist vorgemerkt"
+                    }
+                }
+            },
+        )
+        actions.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Stop"
+                setOnClickListener { presence.stopSpeaking() }
+            },
+        )
+        card.addView(actions)
+
+        return card
     }
 
     private fun featureCard(feature: Feature, dp: (Int) -> Int): LinearLayout {
@@ -333,5 +523,6 @@ class DeviceGrantsActivity : AppCompatActivity() {
 
     companion object {
         private const val TEST_VIEW_REFRESH_MS = 150L
+        private const val PRESENCE_DIAGNOSTICS_REFRESH_MS = 250L
     }
 }
