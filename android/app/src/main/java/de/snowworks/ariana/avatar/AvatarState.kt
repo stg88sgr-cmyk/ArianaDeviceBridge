@@ -17,6 +17,8 @@ data class AvatarState(
     val leftEyeOpen: Float = 1f,
     val rightEyeOpen: Float = 1f,
     val mouthOpen: Float = 0f,
+    /** -1 = rounded lips, 0 = neutral, +1 = wide/smile shape. */
+    val mouthForm: Float = 0f,
     val breath: Float = 0.5f,
     val coreGlow: Float = 0.65f,
     val speaking: Boolean = false,
@@ -39,6 +41,7 @@ data class AvatarState(
         leftEyeOpen = leftEyeOpen.coerceIn(0f, 1f),
         rightEyeOpen = rightEyeOpen.coerceIn(0f, 1f),
         mouthOpen = mouthOpen.coerceIn(0f, 1f),
+        mouthForm = mouthForm.coerceIn(-1f, 1f),
         breath = breath.coerceIn(0f, 1f),
         coreGlow = coreGlow.coerceIn(0f, 1f),
     )
