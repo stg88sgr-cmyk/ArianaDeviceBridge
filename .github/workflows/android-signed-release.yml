@@ -1,0 +1,78 @@
+name: X-Ariana Signed Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  assemble-signed-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Require signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.XARIANA_KEYSTORE_B64 }}
+          STORE_PASSWORD: ${{ secrets.XARIANA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.XARIANA_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.XARIANA_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64" || { echo "Missing XARIANA_KEYSTORE_B64"; exit 1; }
+          test -n "$STORE_PASSWORD" || { echo "Missing XARIANA_KEYSTORE_PASSWORD"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Missing XARIANA_KEY_ALIAS"; exit 1; }
+          test -n "$KEY_PASSWORD" || { echo "Missing XARIANA_KEY_PASSWORD"; exit 1; }
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/x-ariana-release.jks"
+          test -s "$RUNNER_TEMP/x-ariana-release.jks"
+
+      - name: Assemble signed release APK
+        working-directory: android
+        env:
+          XARIANA_KEYSTORE_PATH: ${{ runner.temp }}/x-ariana-release.jks
+          XARIANA_KEYSTORE_PASSWORD: ${{ secrets.XARIANA_KEYSTORE_PASSWORD }}
+          XARIANA_KEY_ALIAS: ${{ secrets.XARIANA_KEY_ALIAS }}
+          XARIANA_KEY_PASSWORD: ${{ secrets.XARIANA_KEY_PASSWORD }}
+        run: gradle :app:assembleRelease --stacktrace
+
+      - name: Verify APK signature and hash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          test -n "$APK" && test -s "$APK"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER" && test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+          sha256sum "$APK" | tee x-ariana-release.sha256
+
+      - name: Upload signed release
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-ariana-signed-release
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            x-ariana-release.sha256
+          if-no-files-found: error
+
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/x-ariana-release.jks"

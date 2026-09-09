@@ -27,7 +27,7 @@
         android:theme="@style/Theme.Snowworks">
 
         <activity
-            android:name=".ui.DeviceGrantsActivity"
+            android:name=".ui.CoreControlActivity"
             android:exported="true"
             android:launchMode="singleTop">
             <intent-filter>
@@ -35,6 +35,19 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".ui.MemoryActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.ConversationActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DeviceGrantsActivity"
+            android:exported="false"
+            android:launchMode="singleTop" />
 
         <service
             android:name="de.snowworks.ariana.session.ArianaCaptureService"
