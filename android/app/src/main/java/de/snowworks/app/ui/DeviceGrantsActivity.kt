@@ -24,6 +24,7 @@ import de.snowworks.ariana.Feature
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.files.TreePermissionStore
+import de.snowworks.ariana.resonance.ArianaResonanceEngine
 import de.snowworks.ariana.session.ArianaCaptureService
 
 class DeviceGrantsActivity : AppCompatActivity() {
@@ -33,6 +34,9 @@ class DeviceGrantsActivity : AppCompatActivity() {
     private val statusViews = mutableMapOf<Feature, TextView>()
     private val switches = mutableMapOf<Feature, SwitchCompat>()
     private var masterSwitch: SwitchCompat? = null
+    private var resonanceSwitch: SwitchCompat? = null
+    private var resonanceStatus: TextView? = null
+    private var suppressResonanceUiEvents = false
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -111,9 +115,10 @@ class DeviceGrantsActivity : AppCompatActivity() {
             isChecked = api.isMasterEnabled()
             setOnCheckedChangeListener { _, on ->
                 api.setMasterEnabled(on)
+                if (!on) ArianaResonanceEngine.stop()
                 toast(
                     if (on) "Zugriff ein. Keine Sitzung automatisch gestartet."
-                    else "Zugriff aus. Sitzungen beendet.",
+                    else "Zugriff aus. Sitzungen und Resonanz beendet.",
                 )
                 refresh()
             }
@@ -121,12 +126,15 @@ class DeviceGrantsActivity : AppCompatActivity() {
         masterRow.addView(masterSwitch)
         root.addView(masterRow)
 
+        root.addView(resonanceCard(::dp))
+
         root.addView(
             MaterialButton(this).apply {
                 text = "Alles stoppen"
                 setBackgroundColor(Color.parseColor("#C45C4A"))
                 setTextColor(Color.WHITE)
                 setOnClickListener {
+                    ArianaResonanceEngine.stop()
                     api.stopAll()
                     toast("Alles gestoppt. Neue Aktionen sind gesperrt.")
                     refresh()
@@ -142,6 +150,63 @@ class DeviceGrantsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             addView(root)
         }
+    }
+
+    private fun resonanceCard(dp: (Int) -> Int): LinearLayout {
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.parseColor("#13191E"))
+            setPadding(dp(16))
+            val lp = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            )
+            lp.topMargin = dp(12)
+            lp.bottomMargin = dp(12)
+            layoutParams = lp
+        }
+
+        card.addView(text("Ariana Resonanz", 18f, Color.parseColor("#E9EEF1")))
+        card.addView(
+            text(
+                "Lokale 432-Hz-Klangschicht. Derselbe Laufzeittakt steht später dem Avatar für Licht und Bewegung zur Verfügung.",
+                14f,
+                Color.parseColor("#8A9AA6"),
+            ),
+        )
+
+        resonanceStatus = text("", 13f, Color.parseColor("#C5D4DC"))
+        card.addView(resonanceStatus)
+
+        val actions = row()
+        actions.addView(
+            text("RESONANCE", 14f, Color.parseColor("#E9EEF1")).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            },
+        )
+        resonanceSwitch = SwitchCompat(this).apply {
+            setOnCheckedChangeListener { _, on ->
+                if (suppressResonanceUiEvents) return@setOnCheckedChangeListener
+
+                if (on) {
+                    if (!api.isMasterEnabled()) {
+                        toast("Zuerst Ariana-Gerätezugriff einschalten.")
+                    } else if (ArianaResonanceEngine.start()) {
+                        toast("432-Hz-Resonanz aktiv.")
+                    } else {
+                        toast("Audioausgabe konnte nicht gestartet werden.")
+                    }
+                } else {
+                    ArianaResonanceEngine.stop()
+                    toast("Resonanz aus.")
+                }
+                refresh()
+            }
+        }
+        actions.addView(resonanceSwitch)
+        card.addView(actions)
+
+        return card
     }
 
     private fun featureCard(feature: Feature, dp: (Int) -> Int): LinearLayout {
@@ -262,6 +327,19 @@ class DeviceGrantsActivity : AppCompatActivity() {
 
     private fun refresh() {
         masterSwitch?.isChecked = api.isMasterEnabled()
+
+        if (!api.isMasterEnabled() && ArianaResonanceEngine.isRunning()) {
+            ArianaResonanceEngine.stop()
+        }
+        suppressResonanceUiEvents = true
+        resonanceSwitch?.isChecked = ArianaResonanceEngine.isRunning()
+        suppressResonanceUiEvents = false
+        resonanceStatus?.text = if (ArianaResonanceEngine.isRunning()) {
+            "Status: aktiv · 432 Hz · visueller Pulstakt verfügbar"
+        } else {
+            "Status: aus · startet nur manuell"
+        }
+
         Feature.entries.forEach { feature ->
             val status = api.getStatus(feature)
             val cameraFrames = feature == Feature.CAMERA && status.sessionActive && CameraFrameStore.hasFrame()
