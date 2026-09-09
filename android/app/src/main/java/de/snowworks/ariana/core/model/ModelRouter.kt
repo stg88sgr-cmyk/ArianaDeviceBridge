@@ -3,6 +3,8 @@ package de.snowworks.ariana.core.model
 import android.content.Context
 import de.snowworks.ariana.core.AuditLog
 import de.snowworks.ariana.core.NetworkGate
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -40,6 +42,7 @@ class ModelRouter(context: Context) {
             requestMethod = "POST"
             connectTimeout = CONNECT_TIMEOUT_MS
             readTimeout = READ_TIMEOUT_MS
+            instanceFollowRedirects = false
             doOutput = true
             setRequestProperty("Content-Type", "application/json; charset=utf-8")
             setRequestProperty("Accept", "application/json")
@@ -51,12 +54,24 @@ class ModelRouter(context: Context) {
         return try {
             connection.outputStream.use { it.write(bytes) }
             val code = connection.responseCode
+
+            if (code in 300..399) {
+                audit.append(
+                    AuditLog.Event(
+                        category = "model_router",
+                        action = "redirect_blocked",
+                        decision = "BLOCKED",
+                        reason = "HTTP redirect blocked; destination must be explicitly configured and allow-listed",
+                        destination = provider.endpoint,
+                        provider = provider.label,
+                    ),
+                )
+                error("Model endpoint returned HTTP $code redirect. Redirects are blocked by local policy.")
+            }
+
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { reader ->
-                val text = reader.readText()
-                require(text.toByteArray(Charsets.UTF_8).size <= MAX_RESPONSE_BYTES) { "Model response is too large." }
-                text
-            }.orEmpty()
+            val bodyBytes = readLimited(stream, MAX_RESPONSE_BYTES)
+            val body = String(bodyBytes, Charsets.UTF_8)
 
             audit.append(
                 AuditLog.Event(
@@ -65,8 +80,8 @@ class ModelRouter(context: Context) {
                     decision = if (code in 200..299) "OK" else "HTTP_$code",
                     destination = provider.endpoint,
                     provider = provider.label,
-                    payloadBytes = body.toByteArray(Charsets.UTF_8).size,
-                    payloadSha256 = AuditLog.sha256(body.toByteArray(Charsets.UTF_8)),
+                    payloadBytes = bodyBytes.size,
+                    payloadSha256 = AuditLog.sha256(bodyBytes),
                 ),
             )
             Response(code, body, provider.id)
@@ -75,9 +90,28 @@ class ModelRouter(context: Context) {
         }
     }
 
+    private fun readLimited(stream: InputStream?, limit: Int): ByteArray {
+        if (stream == null) return ByteArray(0)
+        return stream.use { input ->
+            val output = ByteArrayOutputStream(minOf(limit, INITIAL_BUFFER_BYTES))
+            val buffer = ByteArray(READ_BUFFER_BYTES)
+            var total = 0
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                total += read
+                require(total <= limit) { "Model response is too large." }
+                output.write(buffer, 0, read)
+            }
+            output.toByteArray()
+        }
+    }
+
     companion object {
         private const val CONNECT_TIMEOUT_MS = 15_000
         private const val READ_TIMEOUT_MS = 60_000
         private const val MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+        private const val INITIAL_BUFFER_BYTES = 16 * 1024
+        private const val READ_BUFFER_BYTES = 8 * 1024
     }
 }
