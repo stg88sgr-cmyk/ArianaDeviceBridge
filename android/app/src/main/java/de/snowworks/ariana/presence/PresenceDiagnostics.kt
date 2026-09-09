@@ -12,6 +12,7 @@ data class PresenceDiagnostics(
     val utterancesStarted: Long,
     val rangeCallbacksObserved: Long,
     val speaking: Boolean,
+    val currentUtteranceRangeCallbacks: Long = 0L,
 ) {
     enum class LipSyncMode {
         IDLE,
@@ -22,7 +23,7 @@ data class PresenceDiagnostics(
     val lipSyncMode: LipSyncMode
         get() = when {
             !speaking -> LipSyncMode.IDLE
-            rangeCallbacksObserved > 0L -> LipSyncMode.TEXT_TIMING
+            currentUtteranceRangeCallbacks > 0L -> LipSyncMode.TEXT_TIMING
             else -> LipSyncMode.FALLBACK_PULSE
         }
 
