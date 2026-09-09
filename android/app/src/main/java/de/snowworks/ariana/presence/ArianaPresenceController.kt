@@ -192,6 +192,7 @@ class ArianaPresenceController(
         utterancesStarted = voice.utterancesStartedCount(),
         rangeCallbacksObserved = voice.rangeCallbackCount(),
         speaking = avatarState.speaking,
+        currentUtteranceRangeCallbacks = voice.currentUtteranceRangeCallbackCount(),
     )
 
     fun currentAvatarState(): AvatarState = avatarState
