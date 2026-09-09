@@ -15,7 +15,7 @@ class Live2DAvatarDriverTest {
 
         driver.apply(AvatarState())
 
-        assertEquals("neutral", sink.expression)
+        assertEquals("neutral", sink.lastExpression)
         assertEquals(Live2DModelContract.requiredParameterIds, sink.parameters.keys)
         assertEquals(1, sink.commits)
     }
@@ -53,31 +53,31 @@ class Live2DAvatarDriverTest {
 
         driver.show()
         driver.show()
-        assertTrue(sink.visible)
+        assertTrue(sink.isVisible)
         assertEquals(1, sink.visibilityWrites)
 
         driver.close()
-        assertFalse(sink.visible)
+        assertFalse(sink.isVisible)
         assertEquals(2, sink.visibilityWrites)
         assertTrue(sink.closed)
     }
 
     private class RecordingSink : Live2DFrameSink {
         val parameters = linkedMapOf<String, Float>()
-        var expression: String? = null
-        var visible = false
+        var lastExpression: String? = null
+        var isVisible = false
         var commits = 0
         var parameterWrites = 0
         var visibilityWrites = 0
         var closed = false
 
         override fun setVisible(visible: Boolean) {
-            this.visible = visible
+            isVisible = visible
             visibilityWrites += 1
         }
 
         override fun setExpression(expressionId: String) {
-            expression = expressionId
+            lastExpression = expressionId
         }
 
         override fun setParameter(parameterId: String, value: Float) {
