@@ -1,5 +1,6 @@
 package de.snowworks.app.ui
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -107,6 +108,15 @@ class CoreControlActivity : AppCompatActivity() {
                 14f,
                 Color.parseColor("#8A9AA6"),
             ),
+        )
+
+        root.addView(
+            MaterialButton(this).apply {
+                text = "Gerätefreigaben öffnen"
+                setOnClickListener {
+                    startActivity(Intent(this@CoreControlActivity, DeviceGrantsActivity::class.java))
+                }
+            },
         )
 
         val statusCard = card(::dp)
