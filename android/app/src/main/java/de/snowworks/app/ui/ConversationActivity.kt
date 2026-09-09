@@ -106,8 +106,14 @@ class ConversationActivity : AppCompatActivity() {
                     append("Modell: ${request.provider.model}\n")
                     append("Ziel: ${request.provider.endpoint}\n")
                     append("Memory: ${request.memory.records.size} Einträge · ${request.memory.totalChars} Zeichen\n")
+                    if (request.memory.records.isNotEmpty()) {
+                        append("Memory-IDs: ")
+                        append(request.memory.records.take(8).joinToString { it.id })
+                        if (request.memory.records.size > 8) append(" …")
+                        append("\n")
+                    }
                     append("Network Gate: ${policy.decision} · ${policy.reason}\n")
-                    append("Noch gesendet: NEIN")
+                    append("Gesendet: NEIN")
                 }
                 sendButton.isEnabled = policy.allowed
                 if (!policy.allowed) toast("Senden bleibt gesperrt: ${policy.reason}")
@@ -122,6 +128,16 @@ class ConversationActivity : AppCompatActivity() {
     private fun sendPrepared() {
         val request = prepared ?: return
         if (sending) return
+
+        val currentText = promptInput.text.toString().trim()
+        if (currentText != request.userText) {
+            prepared = null
+            sendButton.isEnabled = false
+            toast("Text wurde nach der Vorbereitung geändert. Bitte erneut lokal vorbereiten.")
+            previewText.append("\nBLOCKIERT: Text nach Vorbereitung geändert.")
+            return
+        }
+
         val policy = networkGate.preview(
             NetworkGate.Request(
                 destination = request.provider.endpoint,
@@ -143,13 +159,15 @@ class ConversationActivity : AppCompatActivity() {
             val result = runCatching { engine.send(request) }
             runOnUiThread {
                 sending = false
+                prepared = null
+                sendButton.isEnabled = false
                 result.onSuccess { reply ->
                     replyText.text = reply.text
-                    previewText.append("\nGesendet: JA · HTTP ${reply.statusCode}")
+                    previewText.append("\nGesendet: JA · HTTP ${reply.statusCode}\nFür erneutes Senden bitte neu vorbereiten.")
                 }.onFailure { error ->
                     replyText.text = "Fehler: ${error.message ?: "Unbekannter Fehler"}"
+                    previewText.append("\nSendeversuch beendet. Für einen neuen Versuch bitte neu vorbereiten.")
                 }
-                prepareLocally()
             }
         }, "X-ArianaModelRequest").apply {
             isDaemon = true
