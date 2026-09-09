@@ -177,6 +177,8 @@ class ArianaPresenceController(
 
     fun isVoiceReady(): Boolean = voice.isReady()
 
+    fun currentVoiceEnginePackage(): String? = voice.currentEnginePackage()
+
     fun currentAvatarState(): AvatarState = avatarState
 
     fun setExpression(expression: AvatarState.Expression) {
