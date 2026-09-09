@@ -48,6 +48,7 @@ class ArianaVoiceEngine(
     private val utteranceTexts = ConcurrentHashMap<String, String>()
     private val utterancesStarted = AtomicLong(0L)
     private val rangeCallbacksObserved = AtomicLong(0L)
+    private val currentUtteranceRangeCallbacks = AtomicLong(0L)
 
     @Volatile
     private var pendingText: String? = null
@@ -77,6 +78,7 @@ class ArianaVoiceEngine(
             object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
                     utterancesStarted.incrementAndGet()
+                    currentUtteranceRangeCallbacks.set(0L)
                     listener.onSpeakingChanged(true)
                 }
 
@@ -87,6 +89,7 @@ class ArianaVoiceEngine(
                     val safeEnd = end.coerceIn(safeStart, text.length)
                     if (safeEnd > safeStart) {
                         rangeCallbacksObserved.incrementAndGet()
+                        currentUtteranceRangeCallbacks.incrementAndGet()
                         listener.onUtteranceRange(text, safeStart, safeEnd)
                     }
                 }
@@ -121,8 +124,11 @@ class ArianaVoiceEngine(
     /** Number of utterances that actually reached Android TTS playback. */
     fun utterancesStartedCount(): Long = utterancesStarted.get()
 
-    /** Number of text-range timing callbacks emitted by the active TTS engine. */
+    /** Lifetime number of text-range timing callbacks emitted by the active TTS engine. */
     fun rangeCallbackCount(): Long = rangeCallbacksObserved.get()
+
+    /** Number of timing callbacks observed for the utterance currently playing. */
+    fun currentUtteranceRangeCallbackCount(): Long = currentUtteranceRangeCallbacks.get()
 
     /**
      * Speaks locally through Android TTS. If the engine is still starting,
@@ -150,6 +156,7 @@ class ArianaVoiceEngine(
 
     fun stop() {
         utteranceTexts.clear()
+        currentUtteranceRangeCallbacks.set(0L)
         tts?.stop()
         listener.onSpeakingChanged(false)
     }
@@ -158,6 +165,7 @@ class ArianaVoiceEngine(
         ready.set(false)
         pendingText = null
         utteranceTexts.clear()
+        currentUtteranceRangeCallbacks.set(0L)
         tts?.stop()
         tts?.shutdown()
         tts = null
