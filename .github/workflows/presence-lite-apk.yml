@@ -24,12 +24,33 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
 
-      # Persistent test signing key for update-compatible debug APKs.
-      - name: Restore stable Presence Lite debug key
+      - name: Restore stable Presence Lite signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: presence-lite-debug-keystore-v1
+          path: ~/.android/presence-lite-debug.keystore
+          key: presence-lite-debug-keystore-v2
+
+      - name: Ensure stable Presence Lite signing key exists
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/presence-lite-debug.keystore" ]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/presence-lite-debug.keystore" \
+              -storetype JKS \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Snowworks,C=DE" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+          test -s "$HOME/.android/presence-lite-debug.keystore"
+          keytool -list \
+            -keystore "$HOME/.android/presence-lite-debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey >/dev/null
 
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
