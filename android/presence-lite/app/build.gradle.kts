@@ -11,8 +11,8 @@ android {
         applicationId = "de.snowworks.presencelite"
         minSdk = 28
         targetSdk = 36
-        versionCode = 5
-        versionName = "2.4"
+        versionCode = 6
+        versionName = "2.5"
     }
 
     signingConfigs {
