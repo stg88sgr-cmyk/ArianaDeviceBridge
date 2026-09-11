@@ -20,19 +20,19 @@ class MainActivity : Activity() {
     private val channelId = "snowworks_presence_state_v2"
     private val quietChannelId = "snowworks_presence_quiet_v2"
     private val requestCodeNotifications = 1001
+    private val presenceNotificationId = 100
     private var pendingSignal: PresenceSignal? = null
 
     private enum class PresenceSignal(
         val title: String,
         val text: String,
-        val notificationId: Int,
         val quiet: Boolean = false
     ) {
-        TEST("Ariana · Presence Test", "Signalweg funktioniert.", 100),
-        THINKING("Ariana · Thinking", "Ich arbeite.", 101),
-        DONE("Ariana · Done", "Fertig.", 102),
-        ATTENTION("Ariana · Attention", "Bitte ansehen.", 103),
-        QUIET("Ariana · Quiet", "Ruhemodus aktiv.", 104, quiet = true)
+        TEST("Ariana · Presence Test", "Signalweg funktioniert."),
+        THINKING("Ariana · Thinking", "Ich arbeite."),
+        DONE("Ariana · Done", "Fertig."),
+        ATTENTION("Ariana · Attention", "Bitte ansehen."),
+        QUIET("Ariana · Quiet", "Ruhemodus aktiv.", quiet = true)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,14 +61,14 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "ARIANA · Presence Lite v2"
+            text = "ARIANA · Presence Lite v2.2"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         }
 
         val subtitle = TextView(this).apply {
-            text = "Nur Benachrichtigungen. Kein Internet, keine Kamera, kein Mikrofon, kein Standort, kein Accessibility."
+            text = "Ein Ariana-Status gleichzeitig. Nur Benachrichtigungen. Kein Internet, keine Kamera, kein Mikrofon, kein Standort, kein Accessibility."
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -174,15 +174,20 @@ class MainActivity : Activity() {
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentTitle(signal.title)
             .setContentText(signal.text)
-            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setAutoCancel(false)
             .build()
 
-        manager.notify(signal.notificationId, notification)
-        Toast.makeText(this, "${signal.name.lowercase()} gesendet.", Toast.LENGTH_SHORT).show()
+        manager.notify(presenceNotificationId, notification)
+        Toast.makeText(this, "${signal.name.lowercase()} aktiv.", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearPresence() {
-        getSystemService(NotificationManager::class.java).cancelAll()
+        val manager = getSystemService(NotificationManager::class.java)
+        // Current single-slot notification.
+        manager.cancel(presenceNotificationId)
+        // Clean up legacy v2 stacked notification IDs once, if any still exist.
+        for (legacyId in 101..104) manager.cancel(legacyId)
         Toast.makeText(this, "Presence gelöscht.", Toast.LENGTH_SHORT).show()
     }
 }
