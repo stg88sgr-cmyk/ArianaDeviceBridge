@@ -11,8 +11,23 @@ android {
         applicationId = "de.snowworks.presencelite"
         minSdk = 28
         targetSdk = 36
-        versionCode = 4
-        versionName = "2.3"
+        versionCode = 5
+        versionName = "2.4"
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file(System.getProperty("user.home") + "/.android/presence-lite-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
     }
 
     compileOptions {
