@@ -24,6 +24,12 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Restore stable Presence Lite debug key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: presence-lite-debug-keystore-v1
+
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
