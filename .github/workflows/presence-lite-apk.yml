@@ -24,6 +24,7 @@ jobs:
       - name: Android SDK
         uses: android-actions/setup-android@v3
 
+      # Persistent test signing key for update-compatible debug APKs.
       - name: Restore stable Presence Lite debug key
         uses: actions/cache@v4
         with:
