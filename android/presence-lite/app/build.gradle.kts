@@ -11,8 +11,8 @@ android {
         applicationId = "de.snowworks.presencelite"
         minSdk = 28
         targetSdk = 36
-        versionCode = 3
-        versionName = "2.2"
+        versionCode = 4
+        versionName = "2.3"
     }
 
     compileOptions {
