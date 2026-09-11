@@ -12,24 +12,37 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
-    private val channelId = "snowworks_presence_test"
+    private val channelId = "snowworks_presence_state_v2"
+    private val quietChannelId = "snowworks_presence_quiet_v2"
     private val requestCodeNotifications = 1001
+    private var pendingSignal: PresenceSignal? = null
+
+    private enum class PresenceSignal(
+        val title: String,
+        val text: String,
+        val notificationId: Int,
+        val quiet: Boolean = false
+    ) {
+        TEST("Ariana · Presence Test", "Signalweg funktioniert.", 100),
+        THINKING("Ariana · Thinking", "Ich arbeite.", 101),
+        DONE("Ariana · Done", "Fertig.", 102),
+        ATTENTION("Ariana · Attention", "Bitte ansehen.", 103),
+        QUIET("Ariana · Quiet", "Ruhemodus aktiv.", 104, quiet = true)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        createChannel()
+        createChannels()
         setContentView(buildUi())
     }
 
-    private fun buildUi(): LinearLayout {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(48, 48, 48, 48)
+    private fun buildUi(): ScrollView {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(Color.rgb(8, 9, 13))
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -37,8 +50,18 @@ class MainActivity : Activity() {
             )
         }
 
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(48, 80, 48, 80)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        }
+
         val title = TextView(this).apply {
-            text = "ARIANA · Presence Lite"
+            text = "ARIANA · Presence Lite v2"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -52,25 +75,44 @@ class MainActivity : Activity() {
             setPadding(0, 24, 0, 36)
         }
 
-        val testButton = Button(this).apply {
-            text = "Presence Test"
-            setOnClickListener { requestOrSendTest() }
-        }
-
         root.addView(title)
         root.addView(subtitle)
-        root.addView(testButton)
-        return root
+        root.addView(signalButton("PRESENCE TEST", PresenceSignal.TEST))
+        root.addView(signalButton("THINKING", PresenceSignal.THINKING))
+        root.addView(signalButton("DONE", PresenceSignal.DONE))
+        root.addView(signalButton("ATTENTION", PresenceSignal.ATTENTION))
+        root.addView(signalButton("QUIET", PresenceSignal.QUIET))
+        root.addView(actionButton("CLEAR") { clearPresence() })
+
+        scroll.addView(root)
+        return scroll
     }
 
-    private fun requestOrSendTest() {
+    private fun signalButton(label: String, signal: PresenceSignal): Button =
+        actionButton(label) { requestOrSend(signal) }
+
+    private fun actionButton(label: String, action: () -> Unit): Button {
+        return Button(this).apply {
+            text = label
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply {
+                topMargin = 12
+            }
+        }
+    }
+
+    private fun requestOrSend(signal: PresenceSignal) {
         if (Build.VERSION.SDK_INT >= 33 &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
+            pendingSignal = signal
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), requestCodeNotifications)
             return
         }
-        sendTestNotification()
+        sendSignal(signal)
     }
 
     override fun onRequestPermissionsResult(
@@ -82,32 +124,47 @@ class MainActivity : Activity() {
         if (requestCode == requestCodeNotifications &&
             grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
         ) {
-            sendTestNotification()
+            pendingSignal?.let { sendSignal(it) }
         } else {
             Toast.makeText(this, "Benachrichtigung nicht erlaubt.", Toast.LENGTH_SHORT).show()
         }
+        pendingSignal = null
     }
 
-    private fun createChannel() {
+    private fun createChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
-            val channel = NotificationChannel(
+
+            val stateChannel = NotificationChannel(
                 channelId,
-                "Ariana Presence Test",
+                "Ariana Presence",
                 NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Lokaler Testkanal für Ariana Presence Signal"
+                description = "Lokale Ariana Presence Statussignale"
                 enableVibration(false)
                 setSound(null, null)
             }
-            manager.createNotificationChannel(channel)
+
+            val quietChannel = NotificationChannel(
+                quietChannelId,
+                "Ariana Presence Quiet",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Leiser Ariana Presence Status"
+                enableVibration(false)
+                setSound(null, null)
+            }
+
+            manager.createNotificationChannel(stateChannel)
+            manager.createNotificationChannel(quietChannel)
         }
     }
 
-    private fun sendTestNotification() {
+    private fun sendSignal(signal: PresenceSignal) {
         val manager = getSystemService(NotificationManager::class.java)
+        val targetChannel = if (signal.quiet) quietChannelId else channelId
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            android.app.Notification.Builder(this, channelId)
+            android.app.Notification.Builder(this, targetChannel)
         } else {
             @Suppress("DEPRECATION")
             android.app.Notification.Builder(this)
@@ -115,12 +172,17 @@ class MainActivity : Activity() {
 
         val notification = builder
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Ariana · Presence Test")
-            .setContentText("Signalweg funktioniert.")
+            .setContentTitle(signal.title)
+            .setContentText(signal.text)
             .setAutoCancel(true)
             .build()
 
-        manager.notify(100, notification)
-        Toast.makeText(this, "Presence Test gesendet.", Toast.LENGTH_SHORT).show()
+        manager.notify(signal.notificationId, notification)
+        Toast.makeText(this, "${signal.name.lowercase()} gesendet.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearPresence() {
+        getSystemService(NotificationManager::class.java).cancelAll()
+        Toast.makeText(this, "Presence gelöscht.", Toast.LENGTH_SHORT).show()
     }
 }
