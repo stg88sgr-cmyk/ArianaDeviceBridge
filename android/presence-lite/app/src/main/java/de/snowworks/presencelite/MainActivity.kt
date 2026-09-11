@@ -61,14 +61,14 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "ARIANA · Presence Lite v2.2"
+            text = "ARIANA · Presence Lite v2.3"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
         }
 
         val subtitle = TextView(this).apply {
-            text = "Ein Ariana-Status gleichzeitig. Nur Benachrichtigungen. Kein Internet, keine Kamera, kein Mikrofon, kein Standort, kein Accessibility."
+            text = "Genau ein Ariana-Status gleichzeitig. Nur Benachrichtigungen. Kein Internet, keine Kamera, kein Mikrofon, kein Standort, kein Accessibility."
             textSize = 16f
             setTextColor(Color.LTGRAY)
             gravity = Gravity.CENTER
@@ -162,6 +162,11 @@ class MainActivity : Activity() {
 
     private fun sendSignal(signal: PresenceSignal) {
         val manager = getSystemService(NotificationManager::class.java)
+
+        // Presence Lite owns only Presence notifications. Clear all app notifications first
+        // so legacy IDs, channel changes, or previous test builds can never stack.
+        manager.cancelAll()
+
         val targetChannel = if (signal.quiet) quietChannelId else channelId
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             android.app.Notification.Builder(this, targetChannel)
@@ -183,11 +188,7 @@ class MainActivity : Activity() {
     }
 
     private fun clearPresence() {
-        val manager = getSystemService(NotificationManager::class.java)
-        // Current single-slot notification.
-        manager.cancel(presenceNotificationId)
-        // Clean up legacy v2 stacked notification IDs once, if any still exist.
-        for (legacyId in 101..104) manager.cancel(legacyId)
+        getSystemService(NotificationManager::class.java).cancelAll()
         Toast.makeText(this, "Presence gelöscht.", Toast.LENGTH_SHORT).show()
     }
 }
