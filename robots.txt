@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://stg88sgr-cmyk.github.io/ArianaDeviceBridge/sitemap.xml

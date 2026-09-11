@@ -1,3 +1,3 @@
-# ArianaDeviceBridge
+# ARIANA-X88 — NEON PULSE
 
-Snowworks Ariana Device Bridge – Android project for local, user-controlled device capabilities and a loopback-only bridge.
+Public showcase branch for the NEON PULSE project. Canonical long-form master remains v6.5 FINAL.

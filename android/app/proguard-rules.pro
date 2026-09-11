@@ -1,2 +1,0 @@
--keep class de.snowworks.ariana.** { *; }
--keep class de.snowworks.app.** { *; }
