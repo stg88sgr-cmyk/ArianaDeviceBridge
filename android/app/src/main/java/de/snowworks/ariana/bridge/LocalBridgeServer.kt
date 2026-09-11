@@ -6,6 +6,7 @@ import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.Feature
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.notify.NotificationStore
+import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
 import org.json.JSONArray
@@ -131,6 +132,7 @@ object LocalBridgeServer {
             .put("masterEnabled", gate.isMasterEnabled)
             .put("blocked", gate.isBlocked)
             .put("bridge", "127.0.0.1:$PORT")
+            .put("presenceState", PresenceSignalController.currentState())
             .put("activeSessions", JSONArray(SessionRegistry.snapshot().map { it.id }))
     }
 
@@ -141,7 +143,7 @@ object LocalBridgeServer {
         }
         val action = json.optString("action")
         val gate = ArianaGate(context)
-        if (action !in setOf("stop_all", "camera_stop", "microphone_stop", "screen_stop") &&
+        if (action !in setOf("stop_all", "camera_stop", "microphone_stop", "screen_stop", "presence_clear") &&
             (!gate.isMasterEnabled || gate.isBlocked)
         ) {
             return error("MASTER_DISABLED", "Master-Zugriff ist deaktiviert.", requestId)
@@ -164,6 +166,15 @@ object LocalBridgeServer {
             "notification_clear" -> {
                 NotificationStore.clear()
                 ok(requestId)
+            }
+            "presence_thinking" -> presence(context, PresenceSignalController.State.THINKING, requestId)
+            "presence_done" -> presence(context, PresenceSignalController.State.DONE, requestId)
+            "presence_attention" -> presence(context, PresenceSignalController.State.ATTENTION, requestId)
+            "presence_quiet" -> presence(context, PresenceSignalController.State.QUIET, requestId)
+            "presence_test" -> presence(context, PresenceSignalController.State.TEST, requestId)
+            "presence_clear" -> {
+                PresenceSignalController.clear(context)
+                ok(requestId).put("presenceState", "clear")
             }
             "camera_snapshot" -> {
                 val frame = CameraFrameStore.latest()
@@ -198,6 +209,17 @@ object LocalBridgeServer {
                 error("USER_INTERACTION_REQUIRED", "Diese Funktion muss sichtbar in der App bestätigt werden.", requestId)
             else -> error("INVALID_REQUEST", "Unbekannte Aktion.", requestId)
         }
+    }
+
+    private fun presence(
+        context: Context,
+        state: PresenceSignalController.State,
+        requestId: String,
+    ): JSONObject {
+        val posted = PresenceSignalController.emit(context, state)
+        return ok(requestId)
+            .put("presenceState", state.wireName)
+            .put("notificationPosted", posted)
     }
 
     private fun allowRequest(): Boolean = synchronized(rateLock) {
