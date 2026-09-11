@@ -61,7 +61,7 @@ class MainActivity : Activity() {
         }
 
         val title = TextView(this).apply {
-            text = "ARIANA · Presence Lite v2.3"
+            text = "ARIANA · Presence Lite v${packageManager.getPackageInfo(packageName, 0).versionName ?: "?"}"
             textSize = 28f
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
@@ -162,9 +162,6 @@ class MainActivity : Activity() {
 
     private fun sendSignal(signal: PresenceSignal) {
         val manager = getSystemService(NotificationManager::class.java)
-
-        // Presence Lite owns only Presence notifications. Clear all app notifications first
-        // so legacy IDs, channel changes, or previous test builds can never stack.
         manager.cancelAll()
 
         val targetChannel = if (signal.quiet) quietChannelId else channelId
