@@ -1,0 +1,41 @@
+name: Presence Lite APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/presence-lite/**"
+      - ".github/workflows/presence-lite-apk.yml"
+
+jobs:
+  assemble-debug:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Assemble Presence Lite debug APK
+        working-directory: android/presence-lite
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Upload Presence Lite APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowworks-presence-lite-debug
+          path: android/presence-lite/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
