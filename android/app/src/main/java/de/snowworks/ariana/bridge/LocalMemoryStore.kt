@@ -1,6 +1,7 @@
 package de.snowworks.ariana.bridge
 
 import android.content.Context
+import android.content.SharedPreferences
 import java.util.Locale
 
 /**
@@ -134,7 +135,7 @@ class LocalMemoryStore(context: Context) {
         }
 
         val editor = prefs.edit().putBoolean(KEY_V2_MIGRATED, true)
-        persistSections(sections, editor)
+        writeSections(sections, editor)
         editor.remove(KEY_FACT_COUNT_V1)
         for (index in 0 until MAX_LEGACY_FACTS) editor.remove(legacyFactKey(index))
         editor.apply()
@@ -164,9 +165,15 @@ class LocalMemoryStore(context: Context) {
         )
     }
 
-    private fun persistSections(
+    private fun persistSections(sections: Map<Category, List<String>>) {
+        val editor = prefs.edit()
+        writeSections(sections, editor)
+        editor.apply()
+    }
+
+    private fun writeSections(
         sections: Map<Category, List<String>>,
-        editor: android.content.SharedPreferences.Editor = prefs.edit(),
+        editor: SharedPreferences.Editor,
     ) {
         Category.entries.forEach { category ->
             val facts = sections[category].orEmpty().takeLast(MAX_FACTS_PER_CATEGORY)
@@ -174,7 +181,6 @@ class LocalMemoryStore(context: Context) {
             for (index in 0 until MAX_FACTS_PER_CATEGORY) editor.remove(factKey(category, index))
             facts.forEachIndexed { index, fact -> editor.putString(factKey(category, index), fact) }
         }
-        editor.apply()
     }
 
     private fun clean(value: String, maxChars: Int): String? = value
