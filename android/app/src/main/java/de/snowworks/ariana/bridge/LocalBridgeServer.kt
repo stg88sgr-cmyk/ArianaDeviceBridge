@@ -35,6 +35,11 @@ object LocalBridgeServer {
     private var windowStartedAt = 0L
     private var requestsInWindow = 0
 
+    private data class HttpResult(
+        val status: Int,
+        val body: JSONObject,
+    )
+
     fun isRunning(): Boolean = running.get()
 
     @Synchronized
@@ -73,6 +78,7 @@ object LocalBridgeServer {
     @Synchronized
     fun stop() {
         running.set(false)
+        DialogueSessionStore.revoke()
         runCatching { serverSocket?.close() }
         serverSocket = null
         worker?.interrupt()
@@ -89,6 +95,8 @@ object LocalBridgeServer {
         val parts = requestLine.split(' ')
         if (parts.size < 2) return respond(socket, 400, error("INVALID_REQUEST", "Ungültige Anfrage."))
 
+        val method = parts[0].uppercase()
+        val path = parts[1]
         val headers = mutableMapOf<String, String>()
         while (true) {
             val line = reader.readLine() ?: break
@@ -97,9 +105,6 @@ object LocalBridgeServer {
             if (idx > 0) headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
         }
 
-        if (headers["x-ariana-token"] != token) {
-            return respond(socket, 401, error("UNAUTHORIZED", "Lokales Bridge-Token fehlt oder ist ungültig."))
-        }
         val length = headers["content-length"]?.toIntOrNull() ?: 0
         if (length < 0 || length > MAX_BODY_BYTES) {
             return respond(socket, 413, error("REQUEST_TOO_LARGE", "Request ist zu groß."))
@@ -115,13 +120,102 @@ object LocalBridgeServer {
             String(chars, 0, offset)
         } else ""
 
-        val path = parts[1]
-        val response = when (path) {
-            "/state" -> state(context)
-            "/action" -> action(context, body)
-            else -> error("NOT_FOUND", "Unbekannter Bridge-Endpunkt.")
+        val result = when {
+            path == "/v1/session" && method == "POST" -> exchangeDialogueSession(body, headers)
+            path == "/v1/dialogue" && method == "POST" -> dialogue(context, body, headers)
+            path.startsWith("/v1/") -> HttpResult(404, error("NOT_FOUND", "Unbekannter X-88-Endpunkt."))
+            headers["x-ariana-token"] != token -> HttpResult(
+                401,
+                error("UNAUTHORIZED", "Lokales Bridge-Token fehlt oder ist ungültig."),
+            )
+            path == "/state" && method == "GET" -> HttpResult(200, state(context))
+            path == "/action" && method == "POST" -> {
+                val response = action(context, body)
+                HttpResult(if (response.optBoolean("ok", false)) 200 else 400, response)
+            }
+            path == "/state" || path == "/action" -> HttpResult(
+                405,
+                error("METHOD_NOT_ALLOWED", "HTTP-Methode ist für diesen Endpunkt nicht erlaubt."),
+            )
+            else -> HttpResult(404, error("NOT_FOUND", "Unbekannter Bridge-Endpunkt."))
         }
-        respond(socket, if (response.optBoolean("ok", false)) 200 else 400, response)
+        respond(socket, result.status, result.body)
+    }
+
+    private fun exchangeDialogueSession(body: String, headers: Map<String, String>): HttpResult {
+        val requestId = UUID.randomUUID().toString()
+        val bodyCode = runCatching { JSONObject(body).optString("pairingCode") }.getOrDefault("")
+        val pairingCode = headers["x-x88-pairing-code"].orEmpty().ifBlank { bodyCode }
+        val grant = DialogueSessionStore.exchange(pairingCode)
+            ?: return HttpResult(
+                401,
+                error("PAIRING_DENIED", "Pairing-Code ist ungültig oder abgelaufen.", requestId),
+            )
+        return HttpResult(
+            200,
+            JSONObject()
+                .put("ok", true)
+                .put("requestId", requestId)
+                .put("model", "x88-dialogue-session-v1")
+                .put("token", grant.token)
+                .put("expiresAtMs", grant.expiresAtMs)
+                .put("expiresInMs", DialogueSessionStore.SESSION_TTL_MS),
+        )
+    }
+
+    private fun dialogue(context: Context, body: String, headers: Map<String, String>): HttpResult {
+        val requestId = UUID.randomUUID().toString()
+        if (!DialogueSessionStore.validateBearer(headers["authorization"])) {
+            return HttpResult(
+                401,
+                error("DIALOGUE_SESSION_UNAUTHORIZED", "X-88 Session-Token fehlt oder ist abgelaufen.", requestId),
+            )
+        }
+
+        val gate = ArianaGate(context)
+        if (!gate.isMasterEnabled || gate.isBlocked) {
+            return HttpResult(
+                403,
+                error("MASTER_DISABLED", "Master-Zugriff ist deaktiviert.", requestId),
+            )
+        }
+
+        val root = runCatching { JSONObject(body) }.getOrElse {
+            return HttpResult(400, error("INVALID_JSON", "JSON konnte nicht gelesen werden.", requestId))
+        }
+        val request = root.optJSONObject("request") ?: root
+        val text = request.optString("text")
+        if (text.isBlank()) {
+            return HttpResult(400, error("INVALID_INPUT", "Dialogtext fehlt.", requestId))
+        }
+
+        PresenceSignalController.emit(context, PresenceSignalController.State.THINKING)
+        val outcome = DialogueRouter.generate(text)
+        if (!outcome.ok) {
+            PresenceSignalController.emit(context, PresenceSignalController.State.ATTENTION)
+            val status = when (outcome.error) {
+                "PROVIDER_UNAVAILABLE" -> 503
+                "PROVIDER_TIMEOUT" -> 504
+                "PROVIDER_FAILED" -> 502
+                else -> 400
+            }
+            return HttpResult(
+                status,
+                error(outcome.error ?: "DIALOGUE_FAILED", "Dialogmodul konnte keine Antwort liefern.", requestId)
+                    .put("providerId", outcome.providerId),
+            )
+        }
+
+        PresenceSignalController.emit(context, PresenceSignalController.State.DONE)
+        return HttpResult(
+            200,
+            JSONObject()
+                .put("ok", true)
+                .put("requestId", requestId)
+                .put("model", "x88-loopback-dialogue-response-v1")
+                .put("providerId", outcome.providerId)
+                .put("reply", outcome.reply),
+        )
     }
 
     private fun state(context: Context): JSONObject {
@@ -134,6 +228,8 @@ object LocalBridgeServer {
             .put("bridge", "127.0.0.1:$PORT")
             .put("presenceState", PresenceSignalController.currentState())
             .put("activeSessions", JSONArray(SessionRegistry.snapshot().map { it.id }))
+            .put("dialogueSessionActive", DialogueSessionStore.hasActiveSession())
+            .put("dialogueProviderId", DialogueRouter.providerId())
     }
 
     private fun action(context: Context, body: String): JSONObject {
@@ -203,6 +299,7 @@ object LocalBridgeServer {
             "stop_all" -> {
                 ArianaCaptureService.stopAll(context)
                 SessionRegistry.clear()
+                DialogueSessionStore.revoke()
                 ok(requestId)
             }
             "camera_start", "microphone_start", "screen_start" ->
@@ -242,13 +339,20 @@ object LocalBridgeServer {
         val body = json.toString().toByteArray(Charsets.UTF_8)
         val reason = when (status) {
             200 -> "OK"
+            400 -> "Bad Request"
             401 -> "Unauthorized"
+            403 -> "Forbidden"
+            404 -> "Not Found"
+            405 -> "Method Not Allowed"
             413 -> "Payload Too Large"
             429 -> "Too Many Requests"
-            else -> "Bad Request"
+            502 -> "Bad Gateway"
+            503 -> "Service Unavailable"
+            504 -> "Gateway Timeout"
+            else -> "Error"
         }
         val out = socket.getOutputStream()
-        out.write("HTTP/1.1 $status $reason\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n".toByteArray())
+        out.write("HTTP/1.1 $status $reason\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: ${body.size}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n".toByteArray())
         out.write(body)
         out.flush()
     }
