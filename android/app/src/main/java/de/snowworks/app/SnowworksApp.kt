@@ -3,6 +3,7 @@ package de.snowworks.app
 import android.app.Application
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
+import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
 
@@ -19,8 +20,10 @@ class SnowworksApp : Application() {
             LocalBridgeServer.start(this)
         }
 
-        // A previously user-configured provider is only registered in-process.
-        // No network connection is opened until a dialogue request is sent.
-        AiProviderManager.activateConfigured(this)
+        // Prefer an explicitly enabled on-device model. Fall back to a previously
+        // configured HTTPS provider only when no local model is active.
+        if (!LocalAiProviderManager.activateConfigured(this)) {
+            AiProviderManager.activateConfigured(this)
+        }
     }
 }

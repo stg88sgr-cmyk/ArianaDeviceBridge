@@ -10,6 +10,7 @@ object DialogueRouter {
     const val MAX_INPUT_CHARS = 1200
     const val MAX_REPLY_CHARS = 2400
     const val PROVIDER_TIMEOUT_MS = 25_000L
+    const val LOCAL_PROVIDER_TIMEOUT_MS = 120_000L
 
     class ProviderException(
         val code: String,
@@ -34,6 +35,7 @@ object DialogueRouter {
     private data class Provider(
         val id: String,
         val generator: Generator,
+        val timeoutMs: Long,
     )
 
     private val executor = Executors.newSingleThreadExecutor { runnable ->
@@ -43,10 +45,15 @@ object DialogueRouter {
     @Volatile private var provider: Provider? = null
 
     @Synchronized
-    fun register(providerId: String, generator: Generator): Boolean {
+    fun register(
+        providerId: String,
+        timeoutMs: Long = PROVIDER_TIMEOUT_MS,
+        generator: Generator,
+    ): Boolean {
         val id = providerId.trim().take(80)
         if (!id.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
-        provider = Provider(id, generator)
+        if (timeoutMs !in 1_000L..180_000L) return false
+        provider = Provider(id, generator, timeoutMs)
         return true
     }
 
@@ -68,7 +75,7 @@ object DialogueRouter {
         val current = provider ?: return Outcome(ok = false, error = "PROVIDER_UNAVAILABLE")
         val future = executor.submit<String> { current.generator.generate(text) }
         return try {
-            val reply = future.get(PROVIDER_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            val reply = future.get(current.timeoutMs, TimeUnit.MILLISECONDS)
                 .replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ")
                 .replace(Regex("\\s+"), " ")
                 .trim()
