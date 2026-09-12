@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "1.4.4"
+        versionCode = 10
+        versionName = "1.4.5"
     }
 
     signingConfigs {
@@ -56,9 +56,7 @@ android {
             isMinifyEnabled = true
             buildConfigField("boolean", "BOOTSTRAP", "false")
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
+                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
