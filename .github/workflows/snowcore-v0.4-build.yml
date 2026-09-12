@@ -1,0 +1,85 @@
+name: ARIANA Snowcore v0.4 Build
+
+on:
+  push:
+    branches:
+      - snowcore-mobile-v0.4
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct exact v0.4 source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/ariana-snowcore
+          cat snowcore-v0.4/parts/part*.b64 | tr -d '\r\n' | base64 --decode > /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip
+          echo "6674ca73e7ea8116d7ca2d6d50b8db33e1f3d825a5589387b1bc25e450d8a95a  /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip" | sha256sum --check
+          unzip -q /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip -d /tmp/ariana-snowcore/src
+          test -f /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4/settings.gradle.kts
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android API 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Static source gate
+        working-directory: /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4
+        run: python3 tools/static_check.py
+
+      - name: Termux shell syntax gate
+        working-directory: /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4
+        shell: bash
+        run: |
+          bash -n termux/01-build-llamacpp.sh
+          bash -n termux/02-start-ariana-model.sh
+          bash -n termux/03-health-test.sh
+
+      - name: Compile Snowcore and build debug APK
+        working-directory: /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4
+        shell: bash
+        run: |
+          gradle :snowcore:compileKotlin :app:assembleDebug --stacktrace
+
+      - name: Verify APK
+        working-directory: /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee /tmp/ariana-snowcore/APK_SHA256.txt
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARIANA-SNOWCORE-MOBILE-v0.4-debug
+          path: |
+            /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4/app/build/outputs/apk/debug/app-debug.apk
+            /tmp/ariana-snowcore/APK_SHA256.txt
+          if-no-files-found: error
+          retention-days: 14
