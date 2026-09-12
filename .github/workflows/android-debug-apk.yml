@@ -29,6 +29,12 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: X-88 Core v1 source smoke gate
+        run: |
+          grep -F 'InetAddress.getByName("127.0.0.1")' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
+          grep -F 'path == "/state" && method == "GET"' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
+          grep -F 'LocalBridgeServer.start(this)' android/app/src/main/java/de/snowworks/app/SnowworksApp.kt
+
       - name: Assemble debug APK
         working-directory: android
         run: gradle :app:assembleDebug --stacktrace
