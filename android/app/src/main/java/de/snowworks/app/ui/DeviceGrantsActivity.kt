@@ -21,6 +21,7 @@ import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.DialogueSessionStore
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
@@ -100,6 +101,13 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 14f,
                 Color.parseColor("#8A9AA6"),
             ),
+        )
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Bridge-Selbsttest"
+                setOnClickListener { runBridgeSelfTest(this) }
+            },
         )
 
         val masterRow = row()
@@ -294,6 +302,35 @@ class DeviceGrantsActivity : AppCompatActivity() {
             )
             .setPositiveButton("OK", null)
             .show()
+    }
+
+    private fun runBridgeSelfTest(button: MaterialButton) {
+        button.isEnabled = false
+        button.text = "Bridge wird geprüft…"
+        Thread {
+            val result = BridgeSelfTest.run(applicationContext)
+            runOnUiThread {
+                button.isEnabled = true
+                button.text = "Bridge-Selbsttest"
+                val state = result.state
+                val detail = buildString {
+                    append(result.message)
+                    if (state != null) {
+                        append("\n\nMaster: ")
+                        append(if (state.optBoolean("masterEnabled", false)) "aktiv" else "aus")
+                        append("\nBlockiert: ")
+                        append(if (state.optBoolean("blocked", false)) "ja" else "nein")
+                        append("\nPresence: ")
+                        append(state.optString("presenceState", "unbekannt"))
+                    }
+                }
+                AlertDialog.Builder(this@DeviceGrantsActivity)
+                    .setTitle(if (result.ok) "ARIANA Core v1 · OK" else "ARIANA Core v1 · Fehler")
+                    .setMessage(detail)
+                    .setPositiveButton("OK", null)
+                    .show()
+            }
+        }.start()
     }
 
     private fun refresh() {
