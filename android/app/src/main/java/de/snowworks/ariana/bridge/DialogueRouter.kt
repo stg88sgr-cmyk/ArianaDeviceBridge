@@ -1,5 +1,6 @@
 package de.snowworks.ariana.bridge
 
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -9,6 +10,15 @@ object DialogueRouter {
     const val MAX_INPUT_CHARS = 1200
     const val MAX_REPLY_CHARS = 2400
     const val PROVIDER_TIMEOUT_MS = 25_000L
+
+    class ProviderException(
+        val code: String,
+        cause: Throwable? = null,
+    ) : RuntimeException(code, cause) {
+        init {
+            require(code.matches(Regex("[A-Z0-9_]{3,80}")))
+        }
+    }
 
     data class Outcome(
         val ok: Boolean,
@@ -71,6 +81,14 @@ object DialogueRouter {
         } catch (_: TimeoutException) {
             future.cancel(true)
             Outcome(ok = false, providerId = current.id, error = "PROVIDER_TIMEOUT")
+        } catch (error: ExecutionException) {
+            future.cancel(true)
+            val typed = error.cause as? ProviderException
+            Outcome(
+                ok = false,
+                providerId = current.id,
+                error = typed?.code ?: "PROVIDER_FAILED",
+            )
         } catch (_: Exception) {
             future.cancel(true)
             Outcome(ok = false, providerId = current.id, error = "PROVIDER_FAILED")
