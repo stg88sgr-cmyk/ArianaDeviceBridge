@@ -26,6 +26,14 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Snowworks">
 
+        <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL-car.so" android:required="false" />
+        <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
+
+        <activity
+            android:name=".ui.LocalModelSettingsActivity"
+            android:exported="false" />
+
         <activity
             android:name=".ui.AiProviderSettingsActivity"
             android:exported="false" />
