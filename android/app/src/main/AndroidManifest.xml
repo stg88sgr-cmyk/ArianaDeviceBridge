@@ -27,6 +27,10 @@
         android:theme="@style/Theme.Snowworks">
 
         <activity
+            android:name=".ui.AiProviderSettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.DeviceGrantsActivity"
             android:exported="true"
             android:launchMode="singleTop">
