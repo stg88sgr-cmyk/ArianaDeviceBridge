@@ -214,14 +214,8 @@ object LocalBridgeServer {
         val outcome = DialogueRouter.generate(text)
         if (!outcome.ok) {
             PresenceSignalController.emit(context, PresenceSignalController.State.ATTENTION)
-            val status = when (outcome.error) {
-                "PROVIDER_UNAVAILABLE" -> 503
-                "PROVIDER_TIMEOUT" -> 504
-                "PROVIDER_FAILED" -> 502
-                else -> 400
-            }
             return HttpResult(
-                status,
+                providerHttpStatus(outcome.error),
                 error(outcome.error ?: "DIALOGUE_FAILED", "Dialogmodul konnte keine Antwort liefern.", requestId)
                     .put("providerId", outcome.providerId),
             )
@@ -237,6 +231,18 @@ object LocalBridgeServer {
                 .put("providerId", outcome.providerId)
                 .put("reply", outcome.reply),
         )
+    }
+
+    private fun providerHttpStatus(error: String?): Int = when (error) {
+        "PROVIDER_UNAVAILABLE" -> 503
+        "PROVIDER_TIMEOUT", "PROVIDER_REMOTE_TIMEOUT" -> 504
+        "PROVIDER_RATE_LIMITED" -> 429
+        "PROVIDER_REQUEST_TOO_LARGE" -> 413
+        "PROVIDER_REQUEST_REJECTED", "PROVIDER_CONFIG_INVALID", "PROVIDER_TARGET_BLOCKED" -> 422
+        "PROVIDER_AUTH_FAILED", "PROVIDER_CONFLICT", "PROVIDER_DNS_FAILED", "PROVIDER_TLS_FAILED",
+        "PROVIDER_NETWORK_FAILED", "PROVIDER_UPSTREAM_FAILED", "PROVIDER_RESPONSE_INVALID",
+        "PROVIDER_RESPONSE_TOO_LARGE", "PROVIDER_EMPTY_REPLY", "PROVIDER_HTTP_FAILED", "PROVIDER_FAILED" -> 502
+        else -> 400
     }
 
     private fun state(context: Context): JSONObject {
@@ -366,6 +372,7 @@ object LocalBridgeServer {
             404 -> "Not Found"
             405 -> "Method Not Allowed"
             413 -> "Payload Too Large"
+            422 -> "Unprocessable Entity"
             429 -> "Too Many Requests"
             502 -> "Bad Gateway"
             503 -> "Service Unavailable"
