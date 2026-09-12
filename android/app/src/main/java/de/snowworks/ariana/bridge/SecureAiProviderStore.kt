@@ -57,13 +57,14 @@ class SecureAiProviderStore(context: Context) {
 
         val uri = URI(config.endpoint.trim())
         require(uri.scheme.equals("https", ignoreCase = true)) { "https required" }
-        require(uri.host?.isNotBlank() == true) { "host required" }
+        val host = uri.host ?: throw IllegalArgumentException("host required")
+        require(host.isNotBlank()) { "host required" }
         require(uri.userInfo == null) { "userinfo forbidden" }
         require(uri.fragment == null) { "fragment forbidden" }
-        require(uri.host != "localhost") { "localhost forbidden" }
-        require(!uri.host.endsWith(".local", ignoreCase = true)) { "local host forbidden" }
+        require(!host.equals("localhost", ignoreCase = true)) { "localhost forbidden" }
+        require(!host.endsWith(".local", ignoreCase = true)) { "local host forbidden" }
         require(uri.rawQuery == null || uri.rawQuery.length <= 256) { "query too long" }
-        require(!IP_LITERAL.matches(uri.host)) { "ip literals forbidden" }
+        require(!IP_LITERAL.matches(host)) { "ip literals forbidden" }
     }
 
     private fun key(): SecretKey {
