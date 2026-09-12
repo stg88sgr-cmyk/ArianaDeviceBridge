@@ -60,7 +60,7 @@ jobs:
           grep -F 'InetAddress.getByName("127.0.0.1")' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'path == "/state" && method == "GET"' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'LocalBridgeServer.start(this)' android/app/src/main/java/de/snowworks/app/SnowworksApp.kt
-          grep -F 'versionCode = 3' android/app/build.gradle.kts
+          grep -F 'versionCode = 4' android/app/build.gradle.kts
 
       - name: Assemble debug APK
         working-directory: android
