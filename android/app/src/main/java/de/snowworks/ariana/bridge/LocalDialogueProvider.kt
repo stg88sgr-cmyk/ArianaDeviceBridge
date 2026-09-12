@@ -166,25 +166,47 @@ class LocalDialogueProvider(
                 ?: "Deinen Namen habe ich noch nicht dauerhaft gespeichert."
         }
 
-        val asksWhatIsKnown = normalized.contains("was weisst du ueber mich") ||
-            normalized.contains("was hast du dir ueber mich gemerkt") ||
-            normalized.contains("was hast du ueber mich gespeichert")
+        val memoryQuestionWords = listOf(
+            "weisst",
+            "gelernt",
+            "gemerkt",
+            "gespeichert",
+            "erinner",
+            "kennst",
+        )
+        val asksWhatIsKnown =
+            (normalized.contains("ueber mich") && memoryQuestionWords.any(normalized::contains)) ||
+                normalized.contains("was hast du von mir gelernt") ||
+                normalized.contains("was kennst du von mir")
 
         if (asksWhatIsKnown) {
-            if (memory.itemCount == 0) {
-                return "Ich habe noch keine dauerhaften lokalen Fakten über dich gespeichert."
-            }
-            return buildString {
-                memory.userName?.let { append("Du heißt $it. ") }
-                if (memory.facts.isNotEmpty()) {
-                    append("Außerdem lokal gespeichert: ")
-                    append(memory.facts.joinToString("; "))
-                    append('.')
-                }
-            }.trim()
+            return formatMemorySummary(memory.userName, memory.facts)
         }
 
         return null
+    }
+
+    private fun formatMemorySummary(userName: String?, facts: List<String>): String {
+        if (userName == null && facts.isEmpty()) {
+            return "Ich habe noch keine dauerhaften lokalen Fakten über dich gespeichert."
+        }
+
+        return buildString {
+            userName?.let { name ->
+                append("Du heißt ")
+                append(name)
+                append('.')
+            }
+
+            if (facts.isNotEmpty()) {
+                if (isNotEmpty()) append(' ')
+                append("Außerdem habe ich mir gemerkt: ")
+                append(facts.joinToString("; "))
+                append('.')
+            } else if (userName != null) {
+                append(" Weitere dauerhafte Fakten habe ich noch nicht gespeichert.")
+            }
+        }
     }
 
     private fun normalizeForIntent(text: String): String = text
@@ -244,6 +266,7 @@ class LocalDialogueProvider(
 
         val SYSTEM_CORE = """
             Du bist Ariana X-88, die lokale Sprach- und Dialogschicht dieser Android-App.
+            Sprich den Nutzer mit du an, niemals mit Sie, solange der Nutzer nichts anderes verlangt.
             Antworte standardmäßig auf Deutsch, natürlich, direkt und klar. Wenn der Nutzer eine andere Sprache verlangt, wechsle dorthin.
             Beziehe dich auf den sichtbaren Gesprächsverlauf und die dauerhaft lokal gespeicherten Fakten, wenn sie für die aktuelle Nachricht relevant sind.
             Die Pronomen des Nutzers beziehen sich auf den Nutzer: Bei Fragen wie "Wie heiße ich?" ist mit "ich" der Nutzer gemeint, nicht Ariana.
