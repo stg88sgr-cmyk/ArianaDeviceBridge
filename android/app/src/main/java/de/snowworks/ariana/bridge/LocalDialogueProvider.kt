@@ -6,7 +6,7 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import java.io.File
 import java.util.Locale
 
-/** MediaPipe-backed, fully on-device text generator with bounded dialogue and durable explicit facts. */
+/** MediaPipe-backed, fully on-device text generator with bounded dialogue and durable structured facts. */
 class LocalDialogueProvider(
     context: Context,
     private val modelFile: File,
@@ -14,6 +14,11 @@ class LocalDialogueProvider(
     private data class Turn(
         val user: String,
         val assistant: String,
+    )
+
+    private data class SavedFact(
+        val value: String,
+        val category: LocalMemoryStore.Category,
     )
 
     private val appContext = context.applicationContext
@@ -27,7 +32,7 @@ class LocalDialogueProvider(
         val explicitSavedFact = capturePersistentFacts(clean)
 
         if (explicitSavedFact != null) {
-            val reply = "Hab ich lokal gespeichert: $explicitSavedFact."
+            val reply = "Hab ich lokal unter ${explicitSavedFact.category.label} gespeichert: ${explicitSavedFact.value}."
             remember(clean, reply)
             return@synchronized reply
         }
@@ -94,18 +99,14 @@ class LocalDialogueProvider(
         append("<start_of_turn>user\n")
         append(SYSTEM_CORE)
         if (persistent.itemCount > 0) {
-            append("\nDauerhaft lokal gespeicherte Fakten aus ausdrücklichen Nutzerangaben:\n")
-            persistent.userName?.let { name ->
-                append("- Der Nutzer heißt ")
-                append(name)
-                append(".\n")
-            }
-            persistent.facts.forEach { fact ->
-                append("- ")
-                append(fact)
-                append("\n")
-            }
-            append("Nutze diese Fakten nur, wenn sie für die aktuelle Nachricht relevant sind. Bei 'Wie heiße ich?' meint 'ich' den Nutzer.")
+            append("\nDauerhaft lokal gespeichertes Memory v2:\n")
+            persistent.userName?.let { name -> append("Person / Name: $name\n") }
+            appendPromptSection("Person", persistent.person)
+            appendPromptSection("Vorlieben", persistent.preferences)
+            appendPromptSection("Projekte", persistent.projects)
+            appendPromptSection("Geräte", persistent.devices)
+            appendPromptSection("Entscheidungen", persistent.decisions)
+            append("Nutze nur relevante Fakten. Bei 'Wie heiße ich?' meint 'ich' den Nutzer.")
         }
         append("\n<end_of_turn>\n")
         append("<start_of_turn>model\nVerstanden.\n<end_of_turn>\n")
@@ -124,8 +125,16 @@ class LocalDialogueProvider(
         append("\n<end_of_turn>\n<start_of_turn>model\n")
     }
 
-    /** Returns the explicitly requested durable fact, otherwise null. */
-    private fun capturePersistentFacts(text: String): String? {
+    private fun StringBuilder.appendPromptSection(label: String, facts: List<String>) {
+        if (facts.isEmpty()) return
+        append(label)
+        append(": ")
+        append(facts.takeLast(PROMPT_FACTS_PER_CATEGORY).joinToString("; "))
+        append('\n')
+    }
+
+    /** Returns an explicitly requested durable fact, otherwise null. */
+    private fun capturePersistentFacts(text: String): SavedFact? {
         val nameMatch = USER_NAME_PATTERNS.firstNotNullOfOrNull { regex -> regex.find(text) }
         val nameCandidate = nameMatch?.groupValues?.getOrNull(1)
             ?.trim()
@@ -144,14 +153,35 @@ class LocalDialogueProvider(
             ?.replace(Regex("\\s+"), " ")
             ?.trim()
             ?.trimEnd('.', ',', '!', '?', ';', ':')
-            ?.take(180)
+            ?.take(140)
             ?.takeIf { it.length >= 2 }
+            ?: return null
 
-        if (explicitFact != null) {
-            memoryStore.rememberFact(explicitFact)
-        }
-        return explicitFact
+        val category = categoryHintFromFact(explicitFact) ?: memoryStore.classify(explicitFact)
+        val cleanedFact = stripCategoryHint(explicitFact)
+        memoryStore.rememberFact(cleanedFact, category)
+        return SavedFact(cleanedFact, category)
     }
+
+    private fun categoryHintFromFact(value: String): LocalMemoryStore.Category? {
+        val normalized = normalizeForIntent(value)
+        return when {
+            normalized.startsWith("person ") || normalized.startsWith("personlich ") -> LocalMemoryStore.Category.PERSON
+            normalized.startsWith("vorliebe ") || normalized.startsWith("vorlieben ") -> LocalMemoryStore.Category.PREFERENCES
+            normalized.startsWith("projekt ") || normalized.startsWith("projekte ") -> LocalMemoryStore.Category.PROJECTS
+            normalized.startsWith("gerat ") || normalized.startsWith("gerate ") || normalized.startsWith("geraet ") || normalized.startsWith("geraete ") -> LocalMemoryStore.Category.DEVICES
+            normalized.startsWith("entscheidung ") || normalized.startsWith("entscheidungen ") -> LocalMemoryStore.Category.DECISIONS
+            else -> null
+        }
+    }
+
+    private fun stripCategoryHint(value: String): String = value
+        .replace(
+            Regex("(?i)^(?:person|persönlich|vorliebe[n]?|projekt[e]?|gerät[e]?|entscheidung(?:en)?)\\s*[:=-]\\s*"),
+            "",
+        )
+        .trim()
+        .ifBlank { value }
 
     private fun directMemoryReply(text: String): String? {
         val memory = memoryStore.snapshot()
@@ -166,12 +196,30 @@ class LocalDialogueProvider(
                 ?: "Deinen Namen habe ich noch nicht dauerhaft gespeichert."
         }
 
+        val requestedCategory = requestedMemoryCategory(normalized)
+        if (requestedCategory != null && isCategoryRecallQuestion(normalized)) {
+            return formatCategorySummary(requestedCategory, memory.facts(requestedCategory))
+        }
+
         if (isMemoryRecallIntent(normalized)) {
-            return formatMemorySummary(memory.userName, memory.facts)
+            return formatMemorySummary(memory)
         }
 
         return null
     }
+
+    private fun requestedMemoryCategory(normalized: String): LocalMemoryStore.Category? = when {
+        listOf("vorliebe", "vorlieben", "was mag ich", "geschmack").any(normalized::contains) -> LocalMemoryStore.Category.PREFERENCES
+        listOf("projekt", "projekte").any(normalized::contains) -> LocalMemoryStore.Category.PROJECTS
+        listOf("gerat", "gerate", "geraet", "geraete", "handy", "telefon", "technik").any(normalized::contains) -> LocalMemoryStore.Category.DEVICES
+        listOf("entscheidung", "entscheidungen", "beschlossen", "entschieden").any(normalized::contains) -> LocalMemoryStore.Category.DECISIONS
+        listOf("personlich", "person", "personliches").any(normalized::contains) -> LocalMemoryStore.Category.PERSON
+        else -> null
+    }
+
+    private fun isCategoryRecallQuestion(normalized: String): Boolean = listOf(
+        "was", "welche", "weisst", "kennst", "gemerkt", "gespeichert", "erinner",
+    ).any(normalized::contains)
 
     private fun isMemoryRecallIntent(normalized: String): Boolean {
         val exactRecallPhrases = listOf(
@@ -188,37 +236,40 @@ class LocalDialogueProvider(
 
         val referencesUser = listOf("ueber mich", "von mir", "zu mir").any(normalized::contains)
         val memoryQuestionWords = listOf(
-            "weisst",
-            "gelernt",
-            "gemerkt",
-            "gespeichert",
-            "erinner",
-            "kennst",
+            "weisst", "gelernt", "gemerkt", "gespeichert", "erinner", "kennst",
         )
         return referencesUser && memoryQuestionWords.any(normalized::contains)
     }
 
-    private fun formatMemorySummary(userName: String?, facts: List<String>): String {
-        if (userName == null && facts.isEmpty()) {
+    private fun formatMemorySummary(memory: LocalMemoryStore.Snapshot): String {
+        if (memory.itemCount == 0) {
             return "Ich habe noch keine dauerhaften lokalen Fakten über dich gespeichert."
         }
 
-        return buildString {
-            userName?.let { name ->
-                append("Du heißt ")
-                append(name)
-                append('.')
-            }
-
-            if (facts.isNotEmpty()) {
-                if (isNotEmpty()) append(' ')
-                append("Außerdem habe ich mir gemerkt: ")
-                append(facts.joinToString("; "))
-                append('.')
-            } else if (userName != null) {
-                append(" Weitere dauerhafte Fakten habe ich noch nicht gespeichert.")
-            }
+        val parts = mutableListOf<String>()
+        memory.userName?.let { parts += "Du heißt $it." }
+        appendCategoryPart(parts, LocalMemoryStore.Category.PERSON, memory.person)
+        appendCategoryPart(parts, LocalMemoryStore.Category.PREFERENCES, memory.preferences)
+        appendCategoryPart(parts, LocalMemoryStore.Category.PROJECTS, memory.projects)
+        appendCategoryPart(parts, LocalMemoryStore.Category.DEVICES, memory.devices)
+        appendCategoryPart(parts, LocalMemoryStore.Category.DECISIONS, memory.decisions)
+        if (parts.size == 1 && memory.userName != null) {
+            parts += "Weitere dauerhafte Fakten habe ich noch nicht gespeichert."
         }
+        return parts.joinToString(" ").take(DialogueRouter.MAX_REPLY_CHARS)
+    }
+
+    private fun appendCategoryPart(
+        parts: MutableList<String>,
+        category: LocalMemoryStore.Category,
+        facts: List<String>,
+    ) {
+        if (facts.isNotEmpty()) parts += "${category.label}: ${facts.joinToString("; ")}."
+    }
+
+    private fun formatCategorySummary(category: LocalMemoryStore.Category, facts: List<String>): String {
+        if (facts.isEmpty()) return "Unter ${category.label} habe ich noch nichts dauerhaft gespeichert."
+        return "${category.label}: ${facts.joinToString("; ")}.".take(DialogueRouter.MAX_REPLY_CHARS)
     }
 
     private fun normalizeForIntent(text: String): String = text
@@ -247,9 +298,7 @@ class LocalDialogueProvider(
                     .take(HISTORY_TEXT_CHARS),
             ),
         )
-        while (history.size > HISTORY_TURNS) {
-            history.removeFirst()
-        }
+        while (history.size > HISTORY_TURNS) history.removeFirst()
     }
 
     override fun close() {
@@ -265,6 +314,7 @@ class LocalDialogueProvider(
         const val HISTORY_TURNS = 3
         const val HISTORY_TEXT_CHARS = 320
         const val LOCAL_INPUT_CHARS = 700
+        const val PROMPT_FACTS_PER_CATEGORY = 3
 
         val USER_NAME_PATTERNS = listOf(
             Regex("(?i)\\bich\\s+hei(?:ß|ss)e\\s+([A-ZÄÖÜa-zäöüß][A-ZÄÖÜa-zäöüß'’-]{1,39})\\b"),
@@ -280,7 +330,8 @@ class LocalDialogueProvider(
             Du bist Ariana X-88, die lokale Sprach- und Dialogschicht dieser Android-App.
             Sprich den Nutzer mit du an, niemals mit Sie, solange der Nutzer nichts anderes verlangt.
             Antworte standardmäßig auf Deutsch, natürlich, direkt und klar. Wenn der Nutzer eine andere Sprache verlangt, wechsle dorthin.
-            Beziehe dich auf den sichtbaren Gesprächsverlauf und die dauerhaft lokal gespeicherten Fakten, wenn sie für die aktuelle Nachricht relevant sind.
+            Beziehe dich auf den sichtbaren Gesprächsverlauf und auf relevante Fakten aus Ariana Memory v2.
+            Memory v2 ordnet dauerhafte Fakten lokal in Person, Vorlieben, Projekte, Geräte und Entscheidungen.
             Die Pronomen des Nutzers beziehen sich auf den Nutzer: Bei Fragen wie "Wie heiße ich?" ist mit "ich" der Nutzer gemeint, nicht Ariana.
             Gib normalerweise 2 bis 5 kurze Sätze. Vermeide leere Floskeln und Ein-Wort-Antworten, außer eine sehr kurze Antwort ist wirklich ausreichend.
             Erfinde keine Geräteaktionen, Sensorwerte, Dateien, Erinnerungen oder Internetinformationen. Behaupte eine Geräteaktion nur, wenn das lokale Bridge-System sie ausdrücklich bestätigt hat.
