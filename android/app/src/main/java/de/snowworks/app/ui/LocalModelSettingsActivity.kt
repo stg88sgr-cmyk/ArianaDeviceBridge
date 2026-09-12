@@ -1,5 +1,6 @@
 package de.snowworks.app.ui
 
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
@@ -13,10 +14,12 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LocalMemoryStore
 import java.util.concurrent.Executors
 
 class LocalModelSettingsActivity : AppCompatActivity() {
     private lateinit var statusView: TextView
+    private lateinit var memoryView: TextView
     private lateinit var actionButton: MaterialButton
     private val ioExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaLocalModelImport").apply { isDaemon = true }
@@ -65,6 +68,9 @@ class LocalModelSettingsActivity : AppCompatActivity() {
         statusView = label("Status wird geladen …", 14f, Color.parseColor("#C5D4DC"))
         root.addView(statusView)
 
+        memoryView = label("Lokales Gedächtnis wird geladen …", 13f, Color.parseColor("#B9A7D8"))
+        root.addView(memoryView)
+
         root.addView(
             MaterialButton(this).apply {
                 text = "Modell auswählen (.task)"
@@ -82,6 +88,13 @@ class LocalModelSettingsActivity : AppCompatActivity() {
             }
         }
         root.addView(actionButton)
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Lokales Gedächtnis löschen"
+                setOnClickListener { confirmMemoryClear() }
+            },
+        )
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -109,6 +122,14 @@ class LocalModelSettingsActivity : AppCompatActivity() {
 
         root.addView(
             label(
+                "Memory v1 speichert nur deinen Namen und ausdrücklich mit „Merke dir …“ markierte Fakten dauerhaft lokal. Der komplette Gesprächsverlauf wird nicht gespeichert. Maximal acht kurze Fakten bleiben über App-Neustarts erhalten.",
+                12f,
+                Color.parseColor("#8E7FA5"),
+            ),
+        )
+
+        root.addView(
+            label(
                 "Empfehlung für den S23: Gemma 3 1B IT als Q4-MediaPipe-.task. Die Modelldatei ist groß und wird einmalig in den privaten App-Speicher kopiert. Die erste Antwort kann beim Laden deutlich länger dauern.",
                 12f,
                 Color.parseColor("#7F919D"),
@@ -119,6 +140,27 @@ class LocalModelSettingsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             addView(root)
         }
+    }
+
+    private fun confirmMemoryClear() {
+        val memory = LocalMemoryStore(this).snapshot()
+        if (memory.itemCount == 0) {
+            toast("Das lokale Gedächtnis ist bereits leer.")
+            return
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Lokales Gedächtnis löschen?")
+            .setMessage("Name und gespeicherte Fakten werden dauerhaft aus Ariana Memory v1 entfernt. Das Sprachmodell bleibt installiert.")
+            .setNegativeButton("Abbrechen", null)
+            .setPositiveButton("Löschen") { _, _ ->
+                LocalMemoryStore(this).clear()
+                LocalAiProviderManager.closeRuntime()
+                LocalAiProviderManager.activateConfigured(this)
+                toast("Lokales Gedächtnis gelöscht.")
+                refreshStatus()
+            }
+            .show()
     }
 
     private fun importModel(uri: Uri) {
@@ -149,6 +191,15 @@ class LocalModelSettingsActivity : AppCompatActivity() {
             }
             status.displayName?.let { append("\nDatei: $it") }
         }
+
+        val memory = LocalMemoryStore(this).snapshot()
+        memoryView.text = buildString {
+            append("Memory v1: ")
+            append(memory.itemCount)
+            append(if (memory.itemCount == 1) " lokaler Fakt" else " lokale Fakten")
+            if (!memory.userName.isNullOrBlank()) append(" · Name gespeichert")
+        }
+
         actionButton.isEnabled = status.installed
         actionButton.text = if (status.enabled) "Lokales Modell deaktivieren" else "Lokales Modell aktivieren"
     }
