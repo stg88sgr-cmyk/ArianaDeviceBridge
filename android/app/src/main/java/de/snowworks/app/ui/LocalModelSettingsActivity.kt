@@ -56,7 +56,7 @@ class LocalModelSettingsActivity : AppCompatActivity() {
         }
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Ariana Local v1", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Ariana Local v2", 30f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
                 "Lokales Sprachmodell auf dem Telefon. Nach dem Import braucht der Dialog keinen API-Key und kein Guthaben.",
@@ -122,7 +122,7 @@ class LocalModelSettingsActivity : AppCompatActivity() {
 
         root.addView(
             label(
-                "Memory v1 speichert nur deinen Namen und ausdrücklich mit „Merke dir …“ markierte Fakten dauerhaft lokal. Der komplette Gesprächsverlauf wird nicht gespeichert. Maximal acht kurze Fakten bleiben über App-Neustarts erhalten.",
+                "Memory v2 ordnet ausdrücklich gespeicherte Fakten lokal in Person, Vorlieben, Projekte, Geräte und Entscheidungen. Bestehende Memory-v1-Fakten werden übernommen. Der komplette Gesprächsverlauf wird nicht dauerhaft gespeichert.",
                 12f,
                 Color.parseColor("#8E7FA5"),
             ),
@@ -151,7 +151,7 @@ class LocalModelSettingsActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle("Lokales Gedächtnis löschen?")
-            .setMessage("Name und gespeicherte Fakten werden dauerhaft aus Ariana Memory v1 entfernt. Das Sprachmodell bleibt installiert.")
+            .setMessage("Name und alle strukturierten Memory-v2-Fakten werden dauerhaft entfernt. Das Sprachmodell bleibt installiert.")
             .setNegativeButton("Abbrechen", null)
             .setPositiveButton("Löschen") { _, _ ->
                 LocalMemoryStore(this).clear()
@@ -194,10 +194,15 @@ class LocalModelSettingsActivity : AppCompatActivity() {
 
         val memory = LocalMemoryStore(this).snapshot()
         memoryView.text = buildString {
-            append("Memory v1: ")
+            append("Memory v2: ")
             append(memory.itemCount)
             append(if (memory.itemCount == 1) " lokaler Fakt" else " lokale Fakten")
             if (!memory.userName.isNullOrBlank()) append(" · Name gespeichert")
+            append("\nPerson: ${memory.person.size}")
+            append(" · Vorlieben: ${memory.preferences.size}")
+            append(" · Projekte: ${memory.projects.size}")
+            append(" · Geräte: ${memory.devices.size}")
+            append(" · Entscheidungen: ${memory.decisions.size}")
         }
 
         actionButton.isEnabled = status.installed
