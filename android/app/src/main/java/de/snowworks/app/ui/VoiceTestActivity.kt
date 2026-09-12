@@ -17,6 +17,7 @@ import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
+import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.voice.ArianaVoiceController
 import java.util.concurrent.Executors
 
@@ -45,13 +46,22 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
         voice = ArianaVoiceController(this, this)
-        runCatching { AiProviderManager.activateConfigured(this) }
+        if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)) {
+            runCatching { AiProviderManager.activateConfigured(this) }
+        }
         setContentView(buildUi())
     }
 
     override fun onResume() {
         super.onResume()
-        if (::providerView.isInitialized) refreshProviderStatus()
+        if (::providerView.isInitialized) {
+            if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false) &&
+                DialogueRouter.providerId() == null
+            ) {
+                runCatching { AiProviderManager.activateConfigured(this) }
+            }
+            refreshProviderStatus()
+        }
     }
 
     override fun onDestroy() {
@@ -71,7 +81,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Sprache v2", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Sprache v2 · Local ready", 30f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
                 "Push-to-talk → Android On-Device STT → Ariana Dialog → Android TTS.",
@@ -107,7 +117,16 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "KI-Provider konfigurieren"
+                text = "Ariana Local (offline)"
+                setOnClickListener {
+                    startActivity(Intent(this@VoiceTestActivity, LocalModelSettingsActivity::class.java))
+                }
+            },
+        )
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Cloud-KI konfigurieren"
                 setOnClickListener {
                     startActivity(Intent(this@VoiceTestActivity, AiProviderSettingsActivity::class.java))
                 }
@@ -125,7 +144,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(
             label(
-                "Kein Dauer-Mikrofon. Sprache wird lokal erkannt. Nur der erkannte Text wird bei einer Dialoganfrage an den von dir konfigurierten HTTPS-KI-Provider gesendet.",
+                "Kein Dauer-Mikrofon. Sprache wird lokal erkannt. Wenn Ariana Local aktiv ist, bleibt auch die Dialogantwort auf dem Telefon. Cloud bleibt optional.",
                 12f,
                 Color.parseColor("#7F919D"),
             ),
@@ -139,12 +158,21 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     }
 
     private fun refreshProviderStatus() {
-        val provider = AiProviderManager.status(this)
-        providerView.text = buildString {
-            append("Dialog: ")
-            append(if (provider.active) "bereit" else "kein KI-Provider aktiv")
-            provider.endpointHost?.let { append(" · $it") }
-            provider.model?.let { append(" · $it") }
+        val activeId = DialogueRouter.providerId()
+        val local = LocalAiProviderManager.status(this)
+        val cloud = AiProviderManager.status(this)
+        providerView.text = when {
+            activeId == LocalAiProviderManager.PROVIDER_ID -> {
+                val size = String.format("%.0f MB", local.sizeBytes / 1024.0 / 1024.0)
+                "Dialog: lokal · offline · $size"
+            }
+            activeId != null && cloud.configured -> buildString {
+                append("Dialog: Cloud bereit")
+                cloud.endpointHost?.let { append(" · $it") }
+                cloud.model?.let { append(" · $it") }
+            }
+            local.installed -> "Dialog: lokales Modell installiert, aber nicht aktiv"
+            else -> "Dialog: kein KI-Provider aktiv"
         }
     }
 
@@ -189,12 +217,12 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun requestDialogue(text: String) {
         if (DialogueRouter.providerId() == null) {
-            val message = "Kein KI-Provider aktiv. Öffne KI-Provider konfigurieren, damit Ariana auf den erkannten Text antworten kann."
+            val message = "Kein KI-Provider aktiv. Öffne Ariana Local für den kostenlosen Offline-Modus oder konfiguriere optional einen Cloud-Provider."
             runOnUiThread {
                 statusView.text = "Status: Dialog-Provider fehlt"
                 replyView.text = "Ariana: $message"
                 refreshProviderStatus()
-                voice.speak("Die lokale Sprache funktioniert. Für meine eigene Antwort muss noch ein KI-Provider konfiguriert werden.")
+                voice.speak("Die lokale Sprache funktioniert. Für meine Antwort fehlt noch ein lokales Modell.")
             }
             return
         }
@@ -228,6 +256,12 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         "PROVIDER_TLS_FAILED" -> "Sichere Verbindung zum KI-Provider fehlgeschlagen."
         "PROVIDER_RESPONSE_INVALID", "PROVIDER_EMPTY_REPLY", "EMPTY_REPLY" -> "KI-Provider hat keine verwertbare Antwort geliefert."
         "PROVIDER_REQUEST_REJECTED" -> "KI-Provider hat die Anfrage abgelehnt."
+        "LOCAL_MODEL_MISSING" -> "Lokales Modell fehlt."
+        "LOCAL_MODEL_LOAD_FAILED" -> "Lokales Modell konnte nicht geladen werden."
+        "LOCAL_SESSION_FAILED" -> "Lokale KI-Sitzung konnte nicht gestartet werden."
+        "LOCAL_OUT_OF_MEMORY" -> "Lokales Modell braucht zu viel Arbeitsspeicher."
+        "LOCAL_EMPTY_REPLY" -> "Lokales Modell hat leer geantwortet."
+        "LOCAL_INFERENCE_FAILED" -> "Lokale KI-Inferenz ist fehlgeschlagen."
         else -> "Dialog fehlgeschlagen${code?.let { " ($it)" } ?: "."}"
     }
 
