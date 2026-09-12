@@ -11,8 +11,7 @@ import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.InputStreamReader
+import java.io.InputStream
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -28,6 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 object LocalBridgeServer {
     const val PORT = 8765
     private const val MAX_BODY_BYTES = 8 * 1024
+    private const val MAX_HTTP_LINE_BYTES = 8 * 1024
     private val running = AtomicBoolean(false)
     @Volatile private var serverSocket: ServerSocket? = null
     @Volatile private var worker: Thread? = null
@@ -90,8 +90,10 @@ object LocalBridgeServer {
         if (!allowRequest()) {
             return respond(socket, 429, error("RATE_LIMITED", "Zu viele lokale Bridge-Anfragen."))
         }
-        val reader = BufferedReader(InputStreamReader(socket.getInputStream(), Charsets.UTF_8))
-        val requestLine = reader.readLine() ?: return
+
+        val input = socket.getInputStream()
+        val requestLine = runCatching { readHttpLine(input) }.getOrNull()
+            ?: return respond(socket, 400, error("INVALID_REQUEST", "Ungültige Anfrage."))
         val parts = requestLine.split(' ')
         if (parts.size < 2) return respond(socket, 400, error("INVALID_REQUEST", "Ungültige Anfrage."))
 
@@ -99,26 +101,23 @@ object LocalBridgeServer {
         val path = parts[1]
         val headers = mutableMapOf<String, String>()
         while (true) {
-            val line = reader.readLine() ?: break
+            val line = runCatching { readHttpLine(input) }.getOrNull()
+                ?: return respond(socket, 400, error("INVALID_HEADERS", "HTTP-Header konnten nicht gelesen werden."))
             if (line.isEmpty()) break
             val idx = line.indexOf(':')
-            if (idx > 0) headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
+            if (idx <= 0) return respond(socket, 400, error("INVALID_HEADERS", "Ungültiger HTTP-Header."))
+            headers[line.substring(0, idx).trim().lowercase()] = line.substring(idx + 1).trim()
         }
 
         val length = headers["content-length"]?.toIntOrNull() ?: 0
         if (length < 0 || length > MAX_BODY_BYTES) {
             return respond(socket, 413, error("REQUEST_TOO_LARGE", "Request ist zu groß."))
         }
-        val body = if (length > 0) {
-            val chars = CharArray(length)
-            var offset = 0
-            while (offset < length) {
-                val read = reader.read(chars, offset, length - offset)
-                if (read <= 0) break
-                offset += read
-            }
-            String(chars, 0, offset)
-        } else ""
+        val bodyBytes = if (length > 0) readExactBytes(input, length) else ByteArray(0)
+        if (bodyBytes == null) {
+            return respond(socket, 400, error("INCOMPLETE_BODY", "Request-Body ist unvollständig."))
+        }
+        val body = bodyBytes.toString(Charsets.UTF_8)
 
         val result = when {
             path == "/v1/session" && method == "POST" -> exchangeDialogueSession(body, headers)
@@ -140,6 +139,28 @@ object LocalBridgeServer {
             else -> HttpResult(404, error("NOT_FOUND", "Unbekannter Bridge-Endpunkt."))
         }
         respond(socket, result.status, result.body)
+    }
+
+    private fun readHttpLine(input: InputStream): String? {
+        val bytes = ArrayList<Byte>(128)
+        while (bytes.size <= MAX_HTTP_LINE_BYTES) {
+            val value = input.read()
+            if (value == -1) return if (bytes.isEmpty()) null else String(bytes.toByteArray(), Charsets.US_ASCII)
+            if (value == '\n'.code) return String(bytes.toByteArray(), Charsets.US_ASCII)
+            if (value != '\r'.code) bytes.add(value.toByte())
+        }
+        throw IllegalArgumentException("HTTP line too long")
+    }
+
+    private fun readExactBytes(input: InputStream, length: Int): ByteArray? {
+        val data = ByteArray(length)
+        var offset = 0
+        while (offset < length) {
+            val count = input.read(data, offset, length - offset)
+            if (count <= 0) return null
+            offset += count
+        }
+        return data
     }
 
     private fun exchangeDialogueSession(body: String, headers: Map<String, String>): HttpResult {
