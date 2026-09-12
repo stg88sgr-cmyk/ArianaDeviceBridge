@@ -63,7 +63,9 @@ class ArianaVoiceController(
             listener.onError("Die lokale Sprachausgabe ist noch nicht bereit.")
             return
         }
-        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ariana-x88-voice-v1")
+        val spoken = text.trim().take(2400)
+        if (spoken.isEmpty()) return
+        tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "ariana-x88-voice-v2")
     }
 
     fun shutdown() {
@@ -131,7 +133,6 @@ class ArianaVoiceController(
         }
 
         listener.onTranscript(text)
-        speak("Ich habe verstanden: $text")
     }
 
     override fun onPartialResults(partialResults: Bundle?) = Unit
