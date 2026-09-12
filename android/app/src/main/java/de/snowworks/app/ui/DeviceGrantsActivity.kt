@@ -21,6 +21,7 @@ import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.bridge.DialogueSessionStore
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.files.TreePermissionStore
@@ -111,6 +112,7 @@ class DeviceGrantsActivity : AppCompatActivity() {
             isChecked = api.isMasterEnabled()
             setOnCheckedChangeListener { _, on ->
                 api.setMasterEnabled(on)
+                if (!on) DialogueSessionStore.revoke()
                 toast(
                     if (on) "Zugriff ein. Keine Sitzung automatisch gestartet."
                     else "Zugriff aus. Sitzungen beendet.",
@@ -122,12 +124,20 @@ class DeviceGrantsActivity : AppCompatActivity() {
         root.addView(masterRow)
 
         root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Ariana X-88 koppeln"
+                setOnClickListener { showX88PairingCode() }
+            },
+        )
+
+        root.addView(
             MaterialButton(this).apply {
                 text = "Alles stoppen"
                 setBackgroundColor(Color.parseColor("#C45C4A"))
                 setTextColor(Color.WHITE)
                 setOnClickListener {
                     api.stopAll()
+                    DialogueSessionStore.revoke()
                     toast("Alles gestoppt. Neue Aktionen sind gesperrt.")
                     refresh()
                 }
@@ -257,6 +267,23 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 }
                 refresh()
             }
+            .show()
+    }
+
+    private fun showX88PairingCode() {
+        if (!api.isMasterEnabled()) {
+            toast("Ariana-Gerätezugriff zuerst einschalten.")
+            return
+        }
+        val pairing = DialogueSessionStore.beginPairing()
+        AlertDialog.Builder(this)
+            .setTitle("Ariana X-88 koppeln")
+            .setMessage(
+                "Pairing-Code: ${pairing.code}\n\n" +
+                    "Der Code ist 2 Minuten gültig und kann genau einmal über 127.0.0.1:8765/v1/session eingelöst werden. " +
+                    "Das daraus erzeugte Dialog-Token bleibt nur im Arbeitsspeicher und läuft nach 10 Minuten ab.",
+            )
+            .setPositiveButton("OK", null)
             .show()
     }
 
