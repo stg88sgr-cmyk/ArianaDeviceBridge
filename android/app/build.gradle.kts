@@ -3,6 +3,17 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+val arianaDebugKeystorePath = System.getenv("ARIANA_DEBUG_KEYSTORE_PATH")
+val arianaDebugStorePassword = System.getenv("ARIANA_DEBUG_STORE_PASSWORD")
+val arianaDebugKeyAlias = System.getenv("ARIANA_DEBUG_KEY_ALIAS")
+val arianaDebugKeyPassword = System.getenv("ARIANA_DEBUG_KEY_PASSWORD")
+val arianaStableDebugSigningAvailable = listOf(
+    arianaDebugKeystorePath,
+    arianaDebugStorePassword,
+    arianaDebugKeyAlias,
+    arianaDebugKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "de.snowworks.app"
     compileSdk = 35
@@ -11,14 +22,28 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.1.1"
+    }
+
+    signingConfigs {
+        if (arianaStableDebugSigningAvailable) {
+            create("arianaStableDebug") {
+                storeFile = file(arianaDebugKeystorePath!!)
+                storePassword = arianaDebugStorePassword
+                keyAlias = arianaDebugKeyAlias
+                keyPassword = arianaDebugKeyPassword
+            }
+        }
     }
 
     buildTypes {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            if (arianaStableDebugSigningAvailable) {
+                signingConfig = signingConfigs.getByName("arianaStableDebug")
+            }
         }
         release {
             isMinifyEnabled = true
