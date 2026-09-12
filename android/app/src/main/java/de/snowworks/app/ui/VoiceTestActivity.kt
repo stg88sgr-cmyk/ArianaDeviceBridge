@@ -117,6 +117,15 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Gerätefreigaben"
+                setOnClickListener {
+                    startActivity(Intent(this@VoiceTestActivity, DeviceGrantsActivity::class.java))
+                }
+            },
+        )
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 text = "Ariana Local (offline)"
                 setOnClickListener {
                     startActivity(Intent(this@VoiceTestActivity, LocalModelSettingsActivity::class.java))
