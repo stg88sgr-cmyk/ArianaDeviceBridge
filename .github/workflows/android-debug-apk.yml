@@ -29,19 +29,61 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
+      - name: Prepare stable debug signing
+        shell: bash
+        env:
+          ARIANA_DEBUG_KEYSTORE_B64: ${{ secrets.ARIANA_DEBUG_KEYSTORE_B64 }}
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" && -z "$ARIANA_DEBUG_STORE_PASSWORD" && -z "$ARIANA_DEBUG_KEY_ALIAS" && -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
+            echo "ARIANA_STABLE_SIGNING=disabled" >> "$GITHUB_ENV"
+            echo "Stable signing is not configured; using the ephemeral Android debug key."
+            exit 0
+          fi
+
+          if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" || -z "$ARIANA_DEBUG_STORE_PASSWORD" || -z "$ARIANA_DEBUG_KEY_ALIAS" || -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
+            echo "::error::ARIANA stable signing secrets are incomplete. Configure all four signing secrets or remove them all."
+            exit 1
+          fi
+
+          printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-debug.jks"
+          chmod 600 "$RUNNER_TEMP/ariana-debug.jks"
+          echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-debug.jks" >> "$GITHUB_ENV"
+          echo "ARIANA_STABLE_SIGNING=enabled" >> "$GITHUB_ENV"
+
       - name: X-88 Core v1 source smoke gate
         run: |
           grep -F 'InetAddress.getByName("127.0.0.1")' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'path == "/state" && method == "GET"' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'LocalBridgeServer.start(this)' android/app/src/main/java/de/snowworks/app/SnowworksApp.kt
+          grep -F 'versionCode = 2' android/app/build.gradle.kts
 
       - name: Assemble debug APK
         working-directory: android
+        env:
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
         run: gradle :app:assembleDebug --stacktrace
+
+      - name: Report APK signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/debug/signing-certificate.txt
+          echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/debug/signing-certificate.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: snowworks-ariana-debug
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/debug/signing-certificate.txt
           if-no-files-found: error
