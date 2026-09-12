@@ -1,0 +1,42 @@
+name: Export Android apksigner
+
+on:
+  push:
+    branches:
+      - x88-export-apksigner
+    paths:
+      - ".github/workflows/export-apksigner.yml"
+
+jobs:
+  export-apksigner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install build tools
+        run: sdkmanager "build-tools;35.0.0"
+
+      - name: Package apksigner
+        run: |
+          mkdir -p out/lib
+          cp "$ANDROID_SDK_ROOT/build-tools/35.0.0/apksigner" out/
+          cp "$ANDROID_SDK_ROOT/build-tools/35.0.0/lib/apksigner.jar" out/lib/
+          chmod +x out/apksigner
+
+      - name: Upload apksigner
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apksigner-35
+          path: out/
+          if-no-files-found: error
