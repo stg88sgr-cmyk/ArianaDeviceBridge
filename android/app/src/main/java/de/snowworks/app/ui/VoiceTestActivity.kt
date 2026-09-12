@@ -14,6 +14,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
+import de.snowworks.app.BuildConfig
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
@@ -82,6 +83,13 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
         root.addView(label("Sprache v2 · Local ready", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(
+            label(
+                "Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}",
+                11f,
+                Color.parseColor("#7896A6"),
+            ),
+        )
         root.addView(
             label(
                 "Push-to-talk → Android On-Device STT → Ariana Dialog → Android TTS.",
