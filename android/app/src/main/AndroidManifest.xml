@@ -31,6 +31,16 @@
             android:exported="false" />
 
         <activity
+            android:name=".ui.VoiceTestActivity"
+            android:exported="true"
+            android:label="Ariana Voice">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
             android:name=".ui.DeviceGrantsActivity"
             android:exported="true"
             android:launchMode="singleTop">
