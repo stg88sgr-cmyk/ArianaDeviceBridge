@@ -274,7 +274,7 @@ class LocalDialogueProvider(
 
     private fun normalizeForIntent(text: String): String = text
         .lowercase(Locale.GERMAN)
-        .replace('ß', 's')
+        .replace("ß", "ss")
         .replace("ä", "ae")
         .replace("ö", "oe")
         .replace("ü", "ue")
