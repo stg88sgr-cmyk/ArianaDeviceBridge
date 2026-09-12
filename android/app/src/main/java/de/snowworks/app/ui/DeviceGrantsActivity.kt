@@ -131,6 +131,15 @@ class DeviceGrantsActivity : AppCompatActivity() {
         )
 
         root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "KI-Provider konfigurieren"
+                setOnClickListener {
+                    startActivity(Intent(this@DeviceGrantsActivity, AiProviderSettingsActivity::class.java))
+                }
+            },
+        )
+
+        root.addView(
             MaterialButton(this).apply {
                 text = "Alles stoppen"
                 setBackgroundColor(Color.parseColor("#C45C4A"))
