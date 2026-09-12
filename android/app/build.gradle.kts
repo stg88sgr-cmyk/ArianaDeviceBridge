@@ -41,12 +41,20 @@ android {
         debug {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
+            buildConfigField("boolean", "BOOTSTRAP", "false")
             if (arianaStableDebugSigningAvailable) {
                 signingConfig = signingConfigs.getByName("arianaStableDebug")
             }
         }
+        create("bootstrap") {
+            initWith(getByName("debug"))
+            versionNameSuffix = "-bootstrap"
+            buildConfigField("boolean", "BOOTSTRAP", "true")
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = true
+            buildConfigField("boolean", "BOOTSTRAP", "false")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -63,6 +71,7 @@ android {
     }
     buildFeatures {
         viewBinding = false
+        buildConfig = true
     }
 }
 
