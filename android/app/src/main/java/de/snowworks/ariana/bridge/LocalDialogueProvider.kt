@@ -166,6 +166,27 @@ class LocalDialogueProvider(
                 ?: "Deinen Namen habe ich noch nicht dauerhaft gespeichert."
         }
 
+        if (isMemoryRecallIntent(normalized)) {
+            return formatMemorySummary(memory.userName, memory.facts)
+        }
+
+        return null
+    }
+
+    private fun isMemoryRecallIntent(normalized: String): Boolean {
+        val exactRecallPhrases = listOf(
+            "was hast du ueber mich gelernt",
+            "was weisst du ueber mich",
+            "was hast du dir ueber mich gemerkt",
+            "was hast du ueber mich gespeichert",
+            "was hast du von mir gelernt",
+            "was weisst du von mir",
+            "was kennst du von mir",
+            "was erinnerst du ueber mich",
+        )
+        if (exactRecallPhrases.any { normalized.contains(it) }) return true
+
+        val referencesUser = listOf("ueber mich", "von mir", "zu mir").any(normalized::contains)
         val memoryQuestionWords = listOf(
             "weisst",
             "gelernt",
@@ -174,16 +195,7 @@ class LocalDialogueProvider(
             "erinner",
             "kennst",
         )
-        val asksWhatIsKnown =
-            (normalized.contains("ueber mich") && memoryQuestionWords.any(normalized::contains)) ||
-                normalized.contains("was hast du von mir gelernt") ||
-                normalized.contains("was kennst du von mir")
-
-        if (asksWhatIsKnown) {
-            return formatMemorySummary(memory.userName, memory.facts)
-        }
-
-        return null
+        return referencesUser && memoryQuestionWords.any(normalized::contains)
     }
 
     private fun formatMemorySummary(userName: String?, facts: List<String>): String {
