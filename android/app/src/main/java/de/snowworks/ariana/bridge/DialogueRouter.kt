@@ -47,8 +47,8 @@ object DialogueRouter {
     @Synchronized
     fun register(
         providerId: String,
-        generator: Generator,
         timeoutMs: Long = PROVIDER_TIMEOUT_MS,
+        generator: Generator,
     ): Boolean {
         val id = providerId.trim().take(80)
         if (!id.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
