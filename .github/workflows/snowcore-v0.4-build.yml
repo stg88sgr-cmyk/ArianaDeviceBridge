@@ -23,7 +23,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p /tmp/ariana-snowcore
-          cat snowcore-v0.4/parts/part*.b64 | tr -d '\r\n' | base64 --decode > /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip
+          cat \
+            snowcore-v0.4/parts/part00.b64 \
+            snowcore-v0.4/parts/part01.b64 \
+            snowcore-v0.4/parts/part02.b64 \
+            snowcore-v0.4/parts/part03.b64 \
+            snowcore-v0.4/parts/part04.b64 \
+            snowcore-v0.4/parts/part06.b64 \
+            snowcore-v0.4/parts/part08a.b64 \
+            snowcore-v0.4/parts/part08b0.b64 \
+            snowcore-v0.4/parts/part08b10.b64 \
+            snowcore-v0.4/parts/part08b110.b64 \
+            snowcore-v0.4/parts/part08b111.b64 \
+            snowcore-v0.4/parts/part09a.b64 \
+            snowcore-v0.4/parts/part09b.b64 \
+            | tr -d '\r\n' \
+            | base64 --decode \
+            > /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip
           echo "6674ca73e7ea8116d7ca2d6d50b8db33e1f3d825a5589387b1bc25e450d8a95a  /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip" | sha256sum --check
           unzip -q /tmp/ariana-snowcore/ARIANA-SNOWCORE-MOBILE-v0.4-SOURCE.zip -d /tmp/ariana-snowcore/src
           test -f /tmp/ariana-snowcore/src/ARIANA-SNOWCORE-MOBILE-v0.4/settings.gradle.kts
