@@ -1,0 +1,60 @@
+name: Android Bootstrap APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-bootstrap-apk.yml"
+
+jobs:
+  assemble-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Bootstrap manifest source gate
+        run: |
+          grep -F 'ArianaNotificationListener' android/app/src/bootstrap/AndroidManifest.xml
+          grep -F 'tools:node="remove"' android/app/src/bootstrap/AndroidManifest.xml
+
+      - name: Assemble bootstrap APK
+        working-directory: android
+        run: gradle :app:assembleBootstrap --stacktrace
+
+      - name: Verify merged bootstrap manifest
+        run: |
+          APK=$(find android/app/build/outputs/apk/bootstrap -name '*.apk' | head -1)
+          APKANALYZER=$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | head -1)
+          test -n "$APK"
+          test -n "$APKANALYZER"
+          "$APKANALYZER" manifest print "$APK" > /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'ArianaNotificationListener' /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE' /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'android.permission.ACCESS_FINE_LOCATION' /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'android.permission.ACCESS_COARSE_LOCATION' /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'android.permission.BLUETOOTH_CONNECT' /tmp/bootstrap-manifest.xml
+          ! grep -Fq 'android.permission.BLUETOOTH_SCAN' /tmp/bootstrap-manifest.xml
+
+      - name: Upload bootstrap APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowworks-ariana-bootstrap
+          path: android/app/build/outputs/apk/bootstrap/*.apk
+          if-no-files-found: error
