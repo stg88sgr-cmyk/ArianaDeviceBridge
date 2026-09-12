@@ -1,11 +1,16 @@
 package de.snowworks.ariana.bridge
 
 import org.json.JSONArray
+import org.json.JSONException
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.net.InetAddress
+import java.net.SocketTimeoutException
 import java.net.URI
+import java.net.UnknownHostException
 import javax.net.ssl.HttpsURLConnection
+import javax.net.ssl.SSLException
 
 /**
  * Small OpenAI-chat-completions-compatible HTTPS adapter.
@@ -15,23 +20,35 @@ class HttpsDialogueProvider(
     private val config: SecureAiProviderStore.Config,
 ) {
     fun generate(text: String): String {
-        val uri = URI(config.endpoint.trim())
-        validateDestination(uri)
+        val uri = runCatching { URI(config.endpoint.trim()) }.getOrElse {
+            throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID", it)
+        }
+        try {
+            validateDestination(uri)
+        } catch (error: DialogueRouter.ProviderException) {
+            throw error
+        } catch (error: Exception) {
+            throw DialogueRouter.ProviderException("PROVIDER_TARGET_BLOCKED", error)
+        }
 
-        val connection = (uri.toURL().openConnection() as HttpsURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            instanceFollowRedirects = false
-            doInput = true
-            doOutput = true
-            useCaches = false
-            setRequestProperty("Accept", "application/json")
-            setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            setRequestProperty("User-Agent", "ArianaDeviceBridge/X88")
-            if (config.apiKey.isNotBlank()) {
-                setRequestProperty("Authorization", "Bearer ${config.apiKey.trim()}")
+        val connection = try {
+            (uri.toURL().openConnection() as HttpsURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                instanceFollowRedirects = false
+                doInput = true
+                doOutput = true
+                useCaches = false
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                setRequestProperty("User-Agent", "ArianaDeviceBridge/X88")
+                if (config.apiKey.isNotBlank()) {
+                    setRequestProperty("Authorization", "Bearer ${config.apiKey.trim()}")
+                }
             }
+        } catch (error: Exception) {
+            throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID", error)
         }
 
         val payload = JSONObject()
@@ -57,49 +74,97 @@ class HttpsDialogueProvider(
             .toString()
             .toByteArray(Charsets.UTF_8)
 
-        require(payload.size <= MAX_REQUEST_BYTES) { "request too large" }
+        if (payload.size > MAX_REQUEST_BYTES) {
+            throw DialogueRouter.ProviderException("PROVIDER_REQUEST_TOO_LARGE")
+        }
 
         return try {
             connection.setFixedLengthStreamingMode(payload.size)
             connection.outputStream.use { it.write(payload) }
             val status = connection.responseCode
-            if (status !in 200..299) {
-                throw IllegalStateException("provider http $status")
-            }
+            if (status !in 200..299) throw httpError(status)
             val body = readBounded(connection.inputStream, MAX_RESPONSE_BYTES)
             parseReply(body)
+        } catch (error: DialogueRouter.ProviderException) {
+            throw error
+        } catch (error: SocketTimeoutException) {
+            throw DialogueRouter.ProviderException("PROVIDER_REMOTE_TIMEOUT", error)
+        } catch (error: UnknownHostException) {
+            throw DialogueRouter.ProviderException("PROVIDER_DNS_FAILED", error)
+        } catch (error: SSLException) {
+            throw DialogueRouter.ProviderException("PROVIDER_TLS_FAILED", error)
+        } catch (error: IOException) {
+            throw DialogueRouter.ProviderException("PROVIDER_NETWORK_FAILED", error)
+        } catch (error: Exception) {
+            throw DialogueRouter.ProviderException("PROVIDER_FAILED", error)
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun validateDestination(uri: URI) {
-        require(uri.scheme.equals("https", ignoreCase = true)) { "https required" }
-        val host = uri.host ?: throw IllegalArgumentException("host required")
-        require(uri.userInfo == null) { "userinfo forbidden" }
-        require(uri.fragment == null) { "fragment forbidden" }
-        require(host != "localhost") { "localhost forbidden" }
-        require(!host.endsWith(".local", ignoreCase = true)) { "local host forbidden" }
-        require(!IP_LITERAL.matches(host)) { "ip literals forbidden" }
+    private fun httpError(status: Int): DialogueRouter.ProviderException =
+        DialogueRouter.ProviderException(
+            when (status) {
+                401, 403 -> "PROVIDER_AUTH_FAILED"
+                408, 504 -> "PROVIDER_REMOTE_TIMEOUT"
+                409 -> "PROVIDER_CONFLICT"
+                413 -> "PROVIDER_REQUEST_TOO_LARGE"
+                422 -> "PROVIDER_REQUEST_REJECTED"
+                429 -> "PROVIDER_RATE_LIMITED"
+                in 400..499 -> "PROVIDER_REQUEST_REJECTED"
+                in 500..599 -> "PROVIDER_UPSTREAM_FAILED"
+                else -> "PROVIDER_HTTP_FAILED"
+            },
+        )
 
-        val addresses = InetAddress.getAllByName(host)
-        require(addresses.isNotEmpty()) { "host unresolved" }
-        require(
-            addresses.none {
+    private fun validateDestination(uri: URI) {
+        if (!uri.scheme.equals("https", ignoreCase = true)) {
+            throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID")
+        }
+        val host = uri.host ?: throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID")
+        if (uri.userInfo != null || uri.fragment != null) {
+            throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID")
+        }
+        if (host.equals("localhost", ignoreCase = true) ||
+            host.endsWith(".local", ignoreCase = true) ||
+            IP_LITERAL.matches(host)
+        ) {
+            throw DialogueRouter.ProviderException("PROVIDER_TARGET_BLOCKED")
+        }
+
+        val addresses = try {
+            InetAddress.getAllByName(host)
+        } catch (error: UnknownHostException) {
+            throw DialogueRouter.ProviderException("PROVIDER_DNS_FAILED", error)
+        }
+        if (addresses.isEmpty()) throw DialogueRouter.ProviderException("PROVIDER_DNS_FAILED")
+        if (
+            addresses.any {
                 it.isAnyLocalAddress || it.isLoopbackAddress || it.isLinkLocalAddress ||
                     it.isSiteLocalAddress || it.isMulticastAddress
-            },
-        ) { "private network target forbidden" }
+            }
+        ) {
+            throw DialogueRouter.ProviderException("PROVIDER_TARGET_BLOCKED")
+        }
     }
 
     private fun parseReply(bytes: ByteArray): String {
-        val root = JSONObject(String(bytes, Charsets.UTF_8))
-        val choices = root.optJSONArray("choices") ?: throw IllegalStateException("choices missing")
-        val first = choices.optJSONObject(0) ?: throw IllegalStateException("choice missing")
-        val message = first.optJSONObject("message") ?: throw IllegalStateException("message missing")
-        val content = message.optString("content", "").trim()
-        require(content.isNotEmpty()) { "reply empty" }
-        return content.take(DialogueRouter.MAX_REPLY_CHARS)
+        try {
+            val root = JSONObject(String(bytes, Charsets.UTF_8))
+            val choices = root.optJSONArray("choices")
+                ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
+            val first = choices.optJSONObject(0)
+                ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
+            val message = first.optJSONObject("message")
+                ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
+            val content = message.optString("content", "").trim()
+            if (content.isEmpty()) throw DialogueRouter.ProviderException("PROVIDER_EMPTY_REPLY")
+            return content.take(DialogueRouter.MAX_REPLY_CHARS)
+        } catch (error: DialogueRouter.ProviderException) {
+            throw error
+        } catch (error: JSONException) {
+            throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID", error)
+        }
     }
 
     private fun readBounded(input: java.io.InputStream, limit: Int): ByteArray {
@@ -111,7 +176,7 @@ class HttpsDialogueProvider(
                 val count = stream.read(buffer)
                 if (count <= 0) break
                 total += count
-                require(total <= limit) { "provider response too large" }
+                if (total > limit) throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_TOO_LARGE")
                 out.write(buffer, 0, count)
             }
             return out.toByteArray()
