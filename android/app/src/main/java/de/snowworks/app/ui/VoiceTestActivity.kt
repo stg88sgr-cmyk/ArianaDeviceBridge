@@ -19,7 +19,9 @@ import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LocalBridgeActionClient
 import de.snowworks.ariana.voice.ArianaVoiceController
+import java.util.Locale
 import java.util.concurrent.Executors
 
 class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
@@ -82,7 +84,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Sprache v2 · Local ready", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Sprache v3 · Local + Bridge", 30f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
                 "Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}",
@@ -92,7 +94,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         )
         root.addView(
             label(
-                "Push-to-talk → Android On-Device STT → Ariana Dialog → Android TTS.",
+                "Push-to-talk → Android On-Device STT → Ariana Local → Bridge/Antwort → Android TTS.",
                 14f,
                 Color.parseColor("#AAB8C2"),
             ),
@@ -161,7 +163,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(
             label(
-                "Kein Dauer-Mikrofon. Sprache wird lokal erkannt. Wenn Ariana Local aktiv ist, bleibt auch die Dialogantwort auf dem Telefon. Cloud bleibt optional.",
+                "Kein Dauer-Mikrofon. Sprache und lokaler Dialog bleiben auf dem Telefon. Sag zum Bridge-Test zum Beispiel: „Ariana, Gerätestatus.“ Cloud bleibt optional.",
                 12f,
                 Color.parseColor("#7F919D"),
             ),
@@ -229,8 +231,65 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             transcriptView.text = "Du: $text"
             replyView.text = "Ariana: …"
         }
-        requestDialogue(text)
+        if (!tryHandleLocalDeviceIntent(text)) {
+            requestDialogue(text)
+        }
     }
+
+    /** First deliberately narrow SAFE voice action: read-only device/bridge status. */
+    private fun tryHandleLocalDeviceIntent(text: String): Boolean {
+        val normalized = normalizeIntent(text)
+        val deviceStatusRequested = listOf(
+            "geraetestatus",
+            "geraete status",
+            "status vom telefon",
+            "status des telefons",
+            "telefon status",
+            "status vom geraet",
+            "status des geraets",
+            "bridge status",
+            "status der bridge",
+            "dein geraetezugriff",
+            "wie ist dein zugriff",
+        ).any(normalized::contains)
+
+        if (!deviceStatusRequested) return false
+
+        dialogueExecutor.execute {
+            val result = LocalBridgeActionClient.execute(applicationContext, "get_device_status")
+            val reply = if (result.ok) {
+                val payload = result.payload
+                val master = payload?.optBoolean("masterEnabled", false) == true
+                val blocked = payload?.optBoolean("blocked", true) != false
+                val sessions = payload?.optJSONArray("activeSessions")?.length() ?: 0
+                when {
+                    master && !blocked -> "Mein lokaler Gerätezugriff ist aktiv. Die Bridge ist verbunden; aktuell sind $sessions Gerätesitzungen aktiv."
+                    blocked -> "Mein lokaler Gerätezugriff ist momentan blockiert. Öffne die Gerätefreigaben und schalte ihn dort wieder ein."
+                    else -> "Mein lokaler Gerätezugriff ist momentan ausgeschaltet."
+                }
+            } else {
+                "Ich konnte den lokalen Gerätestatus gerade nicht lesen."
+            }
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                statusView.text = if (result.ok) "Status: Bridge-Aktion bestätigt" else "Status: Bridge-Aktion fehlgeschlagen"
+                replyView.text = "Ariana: $reply"
+                voice.speak(reply)
+            }
+        }
+        return true
+    }
+
+    private fun normalizeIntent(text: String): String = text
+        .lowercase(Locale.GERMAN)
+        .replace('ß', 's')
+        .replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace(Regex("[^a-z0-9 ]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 
     private fun requestDialogue(text: String) {
         if (DialogueRouter.providerId() == null) {
