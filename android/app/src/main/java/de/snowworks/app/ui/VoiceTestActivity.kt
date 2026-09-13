@@ -88,7 +88,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Sprache v4 · Local + Confirm", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Sprache v4.1 · Local + Confirm", 30f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
                 "Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}",
@@ -348,15 +348,16 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                     }
                     .setPositiveButton("Öffnen") { _, _ ->
                         val grant = ActionApprovalStore.approve(proposalId)
-                        val consumed = if (grant != null) {
-                            ActionApprovalStore.consumeForAction("open_settings")
-                        } else {
-                            null
+                        val consumed = grant?.let {
+                            ActionApprovalStore.consumeGrant(
+                                grantId = it.id,
+                                action = "open_settings",
+                            )
                         }
                         if (consumed == null) {
-                            statusView.text = "Status: Freigabe abgelaufen"
-                            replyView.text = "Ariana: Die Einmalfreigabe ist abgelaufen."
-                            toast("Einmalfreigabe abgelaufen. Bitte erneut sprechen.")
+                            statusView.text = "Status: Freigabe ungültig oder abgelaufen"
+                            replyView.text = "Ariana: Die Einmalfreigabe ist ungültig oder abgelaufen."
+                            toast("Einmalfreigabe ungültig oder abgelaufen. Bitte erneut sprechen.")
                             return@setPositiveButton
                         }
 
