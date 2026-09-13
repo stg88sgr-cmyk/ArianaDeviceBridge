@@ -40,8 +40,23 @@
 
         <activity
             android:name=".ui.VoiceTestActivity"
+            android:exported="false"
+            android:label="Ariana Voice" />
+
+        <activity
+            android:name=".ui.X88HealthActivity"
+            android:exported="false"
+            android:label="ARIANA X-88 Health" />
+
+        <activity
+            android:name=".ui.X88AuditActivity"
+            android:exported="false"
+            android:label="ARIANA X-88 Audit" />
+
+        <activity
+            android:name=".ui.X88HomeActivity"
             android:exported="true"
-            android:label="Ariana Voice">
+            android:label="ARIANA X-88">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
