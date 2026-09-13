@@ -21,6 +21,7 @@ import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.bridge.ActionApprovalStore
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.DialogueSessionStore
 import de.snowworks.ariana.bridge.LocalBridgeServer
@@ -35,6 +36,7 @@ class DeviceGrantsActivity : AppCompatActivity() {
     private val statusViews = mutableMapOf<Feature, TextView>()
     private val switches = mutableMapOf<Feature, SwitchCompat>()
     private var masterSwitch: SwitchCompat? = null
+    private var approvalButton: MaterialButton? = null
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -120,10 +122,13 @@ class DeviceGrantsActivity : AppCompatActivity() {
             isChecked = api.isMasterEnabled()
             setOnCheckedChangeListener { _, on ->
                 api.setMasterEnabled(on)
-                if (!on) DialogueSessionStore.revoke()
+                if (!on) {
+                    DialogueSessionStore.revoke()
+                    ActionApprovalStore.revokeAll()
+                }
                 toast(
                     if (on) "Zugriff ein. Keine Sitzung automatisch gestartet."
-                    else "Zugriff aus. Sitzungen beendet.",
+                    else "Zugriff aus. Sitzungen und Aktionsfreigaben beendet.",
                 )
                 refresh()
             }
@@ -137,6 +142,12 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 setOnClickListener { showX88PairingCode() }
             },
         )
+
+        approvalButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "X-88 Aktionsfreigaben"
+            setOnClickListener { showPendingActionApprovals() }
+        }
+        root.addView(approvalButton)
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -155,7 +166,8 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 setOnClickListener {
                     api.stopAll()
                     DialogueSessionStore.revoke()
-                    toast("Alles gestoppt. Neue Aktionen sind gesperrt.")
+                    ActionApprovalStore.revokeAll()
+                    toast("Alles gestoppt. Sitzungen und Aktionsfreigaben wurden verworfen.")
                     refresh()
                 }
             },
@@ -304,6 +316,50 @@ class DeviceGrantsActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showPendingActionApprovals() {
+        val pending = ActionApprovalStore.listPending()
+        if (pending.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("X-88 Aktionsfreigaben")
+                .setMessage("Keine offene Aktionsfreigabe. CONFIRM-Vorschläge erscheinen hier maximal zwei Minuten lang.")
+                .setPositiveButton("OK", null)
+                .show()
+            refresh()
+            return
+        }
+
+        val proposal = pending.first()
+        val secondsLeft = ((proposal.expiresAtMs - System.currentTimeMillis()) / 1000L).coerceAtLeast(0L)
+        AlertDialog.Builder(this)
+            .setTitle("X-88 Aktionsfreigabe · ${pending.size} offen")
+            .setMessage(
+                "Aktion: ${proposal.action}\n" +
+                    "Grund: ${proposal.reason}\n" +
+                    "Noch gültig: ${secondsLeft}s\n\n" +
+                    "Bestätigen führt die Aktion NICHT aus. Es erzeugt nur eine lokale Einmalfreigabe im Arbeitsspeicher, die nach 60 Sekunden verfällt.",
+            )
+            .setNegativeButton("Ablehnen") { _, _ ->
+                val denied = ActionApprovalStore.deny(proposal.id)
+                toast(if (denied) "Aktionsvorschlag abgelehnt." else "Aktionsvorschlag war bereits abgelaufen.")
+                refresh()
+                Handler(Looper.getMainLooper()).post { showPendingActionApprovals() }
+            }
+            .setPositiveButton("Bestätigen") { _, _ ->
+                val grant = ActionApprovalStore.approve(proposal.id)
+                toast(
+                    if (grant != null) {
+                        "Lokal bestätigt. Noch nichts ausgeführt; Einmalfreigabe läuft in 60 Sekunden ab."
+                    } else {
+                        "Aktionsvorschlag war bereits abgelaufen."
+                    },
+                )
+                refresh()
+                Handler(Looper.getMainLooper()).post { showPendingActionApprovals() }
+            }
+            .setNeutralButton("Später", null)
+            .show()
+    }
+
     private fun runBridgeSelfTest(button: MaterialButton) {
         button.isEnabled = false
         button.text = "Bridge wird geprüft…"
@@ -351,6 +407,12 @@ class DeviceGrantsActivity : AppCompatActivity() {
 
     private fun refresh() {
         masterSwitch?.isChecked = api.isMasterEnabled()
+        val pendingApprovals = ActionApprovalStore.pendingCount()
+        approvalButton?.text = if (pendingApprovals > 0) {
+            "X-88 Aktionsfreigaben ($pendingApprovals offen)"
+        } else {
+            "X-88 Aktionsfreigaben"
+        }
         Feature.entries.forEach { feature ->
             val status = api.getStatus(feature)
             val cameraFrames = feature == Feature.CAMERA && status.sessionActive && CameraFrameStore.hasFrame()
