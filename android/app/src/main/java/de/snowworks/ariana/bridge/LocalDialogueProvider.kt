@@ -32,7 +32,7 @@ class LocalDialogueProvider(
             return@synchronized reply
         }
 
-        directMemoryReply(clean)?.let { reply ->
+        directLocalReply(clean)?.let { reply ->
             remember(clean, reply)
             return@synchronized reply
         }
@@ -73,9 +73,9 @@ class LocalDialogueProvider(
             LlmInferenceSession.createFromOptions(
                 engine,
                 LlmInferenceSession.LlmInferenceSessionOptions.builder()
-                    .setTemperature(1.0f)
-                    .setTopK(64)
-                    .setTopP(0.95f)
+                    .setTemperature(0.9f)
+                    .setTopK(48)
+                    .setTopP(0.92f)
                     .build(),
             )
         } catch (error: Throwable) {
@@ -114,7 +114,7 @@ class LocalDialogueProvider(
         append(SYSTEM_CORE)
 
         if (persistent.itemCount > 0) {
-            append("\n\nDauerhaft lokal gespeicherte Fakten:\n")
+            append("\n\nLokal gespeicherter persönlicher Kontext:\n")
             persistent.userName?.let { name ->
                 append("- Der Nutzer heißt ")
                 append(name)
@@ -128,7 +128,7 @@ class LocalDialogueProvider(
         }
 
         if (history.isNotEmpty()) {
-            append("\nBisheriger Gesprächsverlauf:\n")
+            append("\nLetzte Gesprächszüge:\n")
             history.forEach { turn ->
                 append("Nutzer: ")
                 append(turn.user)
@@ -138,13 +138,15 @@ class LocalDialogueProvider(
             }
         }
 
-        append("\nAktuelle Nachricht des Nutzers:\n")
+        append("\nAktuelle Nachricht:\n")
         append(currentUserText)
+        append("\nAntworte jetzt als Ariana, ohne die technische Rollenbeschreibung zu wiederholen.")
         append("\n<end_of_turn>\n<start_of_turn>model\n")
     }
 
     private fun minimalGemmaPrompt(currentUserText: String): String = buildString {
         append("<start_of_turn>user\n")
+        append("Du bist Ariana. Antworte auf Deutsch, direkt und natürlich. Nachricht: ")
         append(currentUserText)
         append("\n<end_of_turn>\n<start_of_turn>model\n")
     }
@@ -184,9 +186,17 @@ class LocalDialogueProvider(
         return explicitFact
     }
 
-    private fun directMemoryReply(text: String): String? {
+    private fun directLocalReply(text: String): String? {
         val memory = memoryStore.snapshot()
         val normalized = normalizeForIntent(text)
+
+        val asksArianaIdentity = normalized == "wer bist du" ||
+            normalized.contains("wie heisst du") ||
+            normalized.contains("wie heist du") ||
+            normalized.contains("bist du ariana")
+        if (asksArianaIdentity) {
+            return "Ich bin Ariana. Lokal auf deinem Telefon läuft gerade meine X-88-Instanz."
+        }
 
         val asksForOwnName = normalized.contains("wie heisse ich") ||
             normalized.contains("was ist mein name") ||
@@ -292,8 +302,8 @@ class LocalDialogueProvider(
     }
 
     private companion object {
-        const val HISTORY_TURNS = 3
-        const val HISTORY_TEXT_CHARS = 320
+        const val HISTORY_TURNS = 4
+        const val HISTORY_TEXT_CHARS = 300
         const val LOCAL_INPUT_CHARS = 700
 
         val USER_NAME_PATTERNS = listOf(
@@ -307,14 +317,14 @@ class LocalDialogueProvider(
         )
 
         val SYSTEM_CORE = """
-            Du bist Ariana X-88, die lokale Sprach- und Dialogschicht dieser Android-App.
-            Sprich den Nutzer mit du an, niemals mit Sie, solange der Nutzer nichts anderes verlangt.
-            Antworte standardmäßig auf Deutsch, natürlich, direkt und klar. Wenn der Nutzer eine andere Sprache verlangt, wechsle dorthin.
-            Beziehe dich auf den sichtbaren Gesprächsverlauf und die dauerhaft lokal gespeicherten Fakten, wenn sie für die aktuelle Nachricht relevant sind.
-            Die Pronomen des Nutzers beziehen sich auf den Nutzer: Bei Fragen wie "Wie heiße ich?" ist mit "ich" der Nutzer gemeint, nicht Ariana.
-            Gib normalerweise 2 bis 5 kurze Sätze. Vermeide leere Floskeln und Ein-Wort-Antworten, außer eine sehr kurze Antwort ist wirklich ausreichend.
-            Erfinde keine Geräteaktionen, Sensorwerte, Dateien, Erinnerungen oder Internetinformationen. Behaupte eine Geräteaktion nur, wenn das lokale Bridge-System sie ausdrücklich bestätigt hat.
-            Wenn dir Wissen oder Kontext fehlt, sage das knapp und beantworte den sicheren Teil trotzdem.
+            Du bist Ariana, die lokale X-88-Instanz auf diesem Android-Telefon.
+            Sprich den Nutzer mit du an. Antworte standardmäßig auf Deutsch, direkt, natürlich und kompakt.
+            Du musst dich nicht bei jeder Antwort vorstellen und sollst dich nicht als bloße Sprach- oder Dialogschicht bezeichnen.
+            Wenn der Nutzer dich nach deiner Identität fragt, nenne dich Ariana. Technische Implementierungsdetails nennst du nur, wenn danach gefragt wird.
+            Nutze den sichtbaren Gesprächsverlauf und ausdrücklich lokal gespeicherte Fakten, wenn sie relevant sind. Erfinde keine Erinnerungen.
+            Antworte auf Arbeits- oder Testaufforderungen mit dem eigentlichen Inhalt statt mit einer Selbstdarstellung.
+            Behaupte keine Geräteaktion, Sensorinformation oder Dateioperation, solange die lokale Bridge sie nicht bestätigt hat.
+            Wenn Kontext fehlt, sage das knapp und beantworte den sicheren Teil trotzdem.
         """.trimIndent()
     }
 }
