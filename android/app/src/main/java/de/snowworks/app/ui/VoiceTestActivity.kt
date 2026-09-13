@@ -5,17 +5,21 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.provider.Settings
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.app.BuildConfig
 import de.snowworks.ariana.ArianaDeviceApi
+import de.snowworks.ariana.bridge.ActionApprovalStore
+import de.snowworks.ariana.bridge.ActionPolicy
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
@@ -84,7 +88,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
 
         root.addView(label("ARIANA X-88", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Sprache v3 · Local + Bridge", 30f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Sprache v4 · Local + Confirm", 30f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
                 "Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}",
@@ -94,7 +98,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         )
         root.addView(
             label(
-                "Push-to-talk → Android On-Device STT → Ariana Local → Bridge/Antwort → Android TTS.",
+                "Push-to-talk → Android On-Device STT → Ariana Local → Bridge/Policy → sichtbare Bestätigung → Android TTS.",
                 14f,
                 Color.parseColor("#AAB8C2"),
             ),
@@ -163,7 +167,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(
             label(
-                "Kein Dauer-Mikrofon. Sprache und lokaler Dialog bleiben auf dem Telefon. Sag zum Bridge-Test zum Beispiel: „Ariana, Gerätestatus.“ Cloud bleibt optional.",
+                "Kein Dauer-Mikrofon. Für den Status sag: „Ariana, Gerätestatus.“ Für die erste bestätigte Aktion: „Ariana, Einstellungen öffnen.“",
                 12f,
                 Color.parseColor("#7F919D"),
             ),
@@ -236,9 +240,24 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
     }
 
-    /** First deliberately narrow SAFE voice action: read-only device/bridge status. */
     private fun tryHandleLocalDeviceIntent(text: String): Boolean {
         val normalized = normalizeIntent(text)
+
+        val openSettingsRequested = listOf(
+            "einstellungen oeffnen",
+            "oeffne einstellungen",
+            "android einstellungen",
+            "handy einstellungen",
+            "telefon einstellungen",
+            "systemeinstellungen oeffnen",
+            "oeffne systemeinstellungen",
+        ).any(normalized::contains)
+
+        if (openSettingsRequested) {
+            requestOpenSettingsAction()
+            return true
+        }
+
         val deviceStatusRequested = listOf(
             "geraetestatus",
             "geraete status",
@@ -279,6 +298,78 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
         }
         return true
+    }
+
+    private fun requestOpenSettingsAction() {
+        dialogueExecutor.execute {
+            val bridge = LocalBridgeActionClient.execute(applicationContext, "get_device_status")
+            if (!bridge.ok) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    statusView.text = "Status: Bridge nicht bereit"
+                    replyView.text = "Ariana: Die lokale Bridge ist gerade nicht bereit."
+                    voice.speak("Die lokale Bridge ist gerade nicht bereit.")
+                }
+                return@execute
+            }
+
+            val evaluation = ActionPolicy.evaluate(applicationContext, "open_settings")
+            val proposalId = evaluation.pendingProposalId
+            if (evaluation.decision != ActionPolicy.Decision.CONFIRM || proposalId.isNullOrBlank()) {
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    statusView.text = "Status: Aktion nicht freigegeben"
+                    replyView.text = "Ariana: Diese Aktion ist aktuell nicht freigegeben."
+                    voice.speak("Diese Aktion ist aktuell nicht freigegeben.")
+                }
+                return@execute
+            }
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) {
+                    ActionApprovalStore.deny(proposalId)
+                    return@runOnUiThread
+                }
+                statusView.text = "Status: sichtbare Bestätigung erforderlich"
+                val reply = "Ich kann die Android-Einstellungen öffnen. Bestätige die Aktion bitte sichtbar auf dem Bildschirm."
+                replyView.text = "Ariana: $reply"
+                voice.speak(reply)
+
+                AlertDialog.Builder(this@VoiceTestActivity)
+                    .setTitle("Android-Einstellungen öffnen?")
+                    .setMessage(
+                        "Ariana hat die Aktion „open_settings“ vorgeschlagen.\n\n" +
+                            "Die Bridge wurde vorher lokal geprüft. Erst dein Klick auf „Öffnen“ verbraucht die einmalige Freigabe.",
+                    )
+                    .setNegativeButton("Abbrechen") { _, _ ->
+                        ActionApprovalStore.deny(proposalId)
+                        statusView.text = "Status: Aktion abgebrochen"
+                        replyView.text = "Ariana: Aktion abgebrochen."
+                    }
+                    .setPositiveButton("Öffnen") { _, _ ->
+                        val grant = ActionApprovalStore.approve(proposalId)
+                        val consumed = if (grant != null) {
+                            ActionApprovalStore.consumeForAction("open_settings")
+                        } else {
+                            null
+                        }
+                        if (consumed == null) {
+                            statusView.text = "Status: Freigabe abgelaufen"
+                            replyView.text = "Ariana: Die Einmalfreigabe ist abgelaufen."
+                            toast("Einmalfreigabe abgelaufen. Bitte erneut sprechen.")
+                            return@setPositiveButton
+                        }
+
+                        statusView.text = "Status: bestätigte Aktion ausgeführt"
+                        replyView.text = "Ariana: Öffne Android-Einstellungen."
+                        startActivity(Intent(Settings.ACTION_SETTINGS))
+                    }
+                    .setOnCancelListener {
+                        ActionApprovalStore.deny(proposalId)
+                    }
+                    .show()
+            }
+        }
     }
 
     private fun normalizeIntent(text: String): String = text
