@@ -7,7 +7,7 @@ import java.util.UUID
  *
  * Nothing in this store performs device work. CONFIRM proposals can be approved
  * or denied by local UI. Approval only yields a short-lived one-time grant that
- * a future executor may consume explicitly.
+ * a future local executor may consume by action name.
  */
 object ActionApprovalStore {
     const val PROPOSAL_TTL_MS = 2 * 60 * 1000L
@@ -78,16 +78,15 @@ object ActionApprovalStore {
     }
 
     /**
-     * One-time grant consumption primitive for a future execution layer.
-     * It only returns metadata and has no device-side effect.
+     * One-time grant consumption primitive for a future local execution layer.
+     * No grant identifier is exposed to the AI-facing protocol.
      */
     @Synchronized
-    fun consume(grantId: String, action: String, nowMs: Long = System.currentTimeMillis()): ApprovalGrant? {
+    fun consumeForAction(action: String, nowMs: Long = System.currentTimeMillis()): ApprovalGrant? {
         purgeExpired(nowMs)
-        val grant = approved[grantId] ?: return null
-        if (grant.action != action) return null
-        approved.remove(grantId)
-        return grant
+        val entry = approved.entries.firstOrNull { it.value.action == action } ?: return null
+        approved.remove(entry.key)
+        return entry.value
     }
 
     @Synchronized
