@@ -34,6 +34,7 @@ object ActionPolicy {
     )
 
     private val confirm = setOf(
+        "open_settings",
         "camera_start",
         "microphone_start",
         "screen_start",
