@@ -9,8 +9,9 @@ import java.net.Socket
  * Side-effect-bounded local bridge verification.
  *
  * The protocol checks never invoke the configured AI provider: the valid bearer
- * request deliberately carries an empty dialogue text, so LocalBridgeServer must
+ * dialogue request deliberately carries an empty text, so LocalBridgeServer must
  * reject it at input validation before DialogueRouter.generate() can run.
+ * Action proposal checks only classify actions and require executable=false.
  */
 object BridgeSelfTest {
     data class Check(
@@ -75,7 +76,7 @@ object BridgeSelfTest {
 
         if (DialogueSessionStore.hasActiveSession()) {
             checks += Check(
-                name = "Pairing + Bearer",
+                name = "Pairing + Bearer + ActionPolicy",
                 ok = true,
                 skipped = true,
                 detail = "Übersprungen, weil bereits eine aktive X-88-Dialogsession läuft. Diese Sitzung wurde nicht verändert.",
@@ -161,9 +162,46 @@ object BridgeSelfTest {
                     "Gültige Session erreichte das erwartete Input-Gate nicht (HTTP ${validBearer.status})."
                 },
             )
+
+            val invalidProposalBearer = request(
+                method = "POST",
+                path = "/v1/action/proposal",
+                headers = mapOf("Authorization" to "Bearer x88-selftest-invalid-token"),
+                body = JSONObject().put("action", "get_device_status").toString(),
+            )
+            val proposalAuthBlocked = invalidProposalBearer.status == 401 &&
+                invalidProposalBearer.json?.optString("error") == "DIALOGUE_SESSION_UNAUTHORIZED"
+            checks += Check(
+                name = "ActionProposal Bearer-Gate",
+                ok = proposalAuthBlocked,
+                detail = if (proposalAuthBlocked) {
+                    "Aktionsvorschläge akzeptieren keine ungültige X-88-Session."
+                } else {
+                    "Proposal-Endpunkt akzeptierte die Auth-Grenze nicht wie erwartet (HTTP ${invalidProposalBearer.status})."
+                },
+            )
+
+            checks += proposalCheck(
+                sessionToken = sessionToken,
+                action = "get_device_status",
+                expectedDecision = "SAFE",
+                name = "ActionPolicy SAFE",
+            )
+            checks += proposalCheck(
+                sessionToken = sessionToken,
+                action = "camera_start",
+                expectedDecision = "CONFIRM",
+                name = "ActionPolicy CONFIRM",
+            )
+            checks += proposalCheck(
+                sessionToken = sessionToken,
+                action = "format_phone",
+                expectedDecision = "BLOCKED",
+                name = "ActionPolicy BLOCKED",
+            )
         } catch (error: Exception) {
             checks += Check(
-                name = "Pairing-Protokoll",
+                name = "Pairing-/Policy-Protokoll",
                 ok = false,
                 detail = "Lokaler Protokolltest scheiterte: ${error.javaClass.simpleName}",
             )
@@ -174,6 +212,35 @@ object BridgeSelfTest {
         }
 
         return finish(checks, state)
+    }
+
+    private fun proposalCheck(
+        sessionToken: String,
+        action: String,
+        expectedDecision: String,
+        name: String,
+    ): Check {
+        val response = request(
+            method = "POST",
+            path = "/v1/action/proposal",
+            headers = mapOf("Authorization" to "Bearer $sessionToken"),
+            body = JSONObject().put("action", action).toString(),
+        )
+        val json = response.json
+        val ok = response.status == 200 &&
+            json?.optBoolean("ok", false) == true &&
+            json.optString("action") == action &&
+            json.optString("decision") == expectedDecision &&
+            !json.optBoolean("executable", true)
+        return Check(
+            name = name,
+            ok = ok,
+            detail = if (ok) {
+                "$action → $expectedDecision, executable=false. Keine Geräteaktion wurde ausgeführt."
+            } else {
+                "$action lieferte nicht die erwartete reine Policy-Entscheidung (HTTP ${response.status})."
+            },
+        )
     }
 
     private fun finish(checks: List<Check>, state: JSONObject?): Result {
@@ -205,7 +272,7 @@ object BridgeSelfTest {
                 append("$method $path HTTP/1.1\r\n")
                 append("Host: 127.0.0.1:${LocalBridgeServer.PORT}\r\n")
                 append("Accept: application/json\r\n")
-                headers.forEach { (name, value) -> append("$name: $value\r\n") }
+                headers.forEach { (headerName, value) -> append("$headerName: $value\r\n") }
                 if (bodyBytes.isNotEmpty()) {
                     append("Content-Type: application/json; charset=utf-8\r\n")
                     append("Content-Length: ${bodyBytes.size}\r\n")
