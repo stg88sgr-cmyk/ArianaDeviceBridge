@@ -315,6 +315,20 @@ class DeviceGrantsActivity : AppCompatActivity() {
                 val state = result.state
                 val detail = buildString {
                     append(result.message)
+                    if (result.checks.isNotEmpty()) {
+                        append("\n\nPrüfungen:")
+                        result.checks.forEach { check ->
+                            append("\n")
+                            append(
+                                when {
+                                    check.skipped -> "↷"
+                                    check.ok -> "✓"
+                                    else -> "✗"
+                                },
+                            )
+                            append(" ${check.name}: ${check.detail}")
+                        }
+                    }
                     if (state != null) {
                         append("\n\nMaster: ")
                         append(if (state.optBoolean("masterEnabled", false)) "aktiv" else "aus")
@@ -322,10 +336,12 @@ class DeviceGrantsActivity : AppCompatActivity() {
                         append(if (state.optBoolean("blocked", false)) "ja" else "nein")
                         append("\nPresence: ")
                         append(state.optString("presenceState", "unbekannt"))
+                        append("\nProvider: ")
+                        append(state.optString("dialogueProviderId", "nicht aktiv").ifBlank { "nicht aktiv" })
                     }
                 }
                 AlertDialog.Builder(this@DeviceGrantsActivity)
-                    .setTitle(if (result.ok) "ARIANA Core v1 · OK" else "ARIANA Core v1 · Fehler")
+                    .setTitle(if (result.ok) "ARIANA Core v2 · OK" else "ARIANA Core v2 · Fehler")
                     .setMessage(detail)
                     .setPositiveButton("OK", null)
                     .show()

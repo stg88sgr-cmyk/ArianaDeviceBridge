@@ -63,6 +63,24 @@ jobs:
           grep -Eq 'versionCode = [1-9][0-9]*' android/app/build.gradle.kts
           grep -Eq 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' android/app/build.gradle.kts
 
+      - name: X-88 loopback security self-test v2 gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_file='android/app/src/main/java/de/snowworks/ariana/bridge/BridgeSelfTest.kt'
+          ui_file='android/app/src/main/java/de/snowworks/app/ui/DeviceGrantsActivity.kt'
+          grep -F 'DialogueSessionStore.hasActiveSession()' "$test_file"
+          grep -F 'name = "Einmal-Pairing"' "$test_file"
+          grep -F 'name = "Pairing-Replay-Sperre"' "$test_file"
+          grep -F 'name = "Bearer-Abweisung"' "$test_file"
+          grep -F 'name = "Bearer-Akzeptanz + Input-Gate"' "$test_file"
+          grep -F '"DIALOGUE_SESSION_UNAUTHORIZED"' "$test_file"
+          grep -F '"INVALID_INPUT"' "$test_file"
+          grep -F 'Kein KI-Provider wurde aufgerufen.' "$test_file"
+          grep -F 'DialogueSessionStore.revoke()' "$test_file"
+          grep -F 'ARIANA Core v2 · OK' "$ui_file"
+          grep -F 'check.skipped' "$ui_file"
+
       - name: Assemble debug APK
         working-directory: android
         env:
