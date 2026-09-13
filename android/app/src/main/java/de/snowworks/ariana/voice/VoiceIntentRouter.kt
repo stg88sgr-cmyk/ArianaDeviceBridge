@@ -24,7 +24,7 @@ object VoiceIntentRouter {
 
     fun normalize(text: String): String = text
         .lowercase(Locale.GERMAN)
-        .replace('ß', 's')
+        .replace("ß", "ss")
         .replace("ä", "ae")
         .replace("ö", "oe")
         .replace("ü", "ue")
@@ -35,11 +35,13 @@ object VoiceIntentRouter {
     private val OPEN_SETTINGS_PATTERNS = listOf(
         "einstellungen oeffnen",
         "oeffne einstellungen",
+        "oeffne die einstellungen",
         "android einstellungen",
         "handy einstellungen",
         "telefon einstellungen",
         "systemeinstellungen oeffnen",
         "oeffne systemeinstellungen",
+        "oeffne die systemeinstellungen",
     )
 
     private val DEVICE_STATUS_PATTERNS = listOf(

@@ -8,6 +8,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
 
 class ArianaVoiceController(
@@ -19,6 +20,8 @@ class ArianaVoiceController(
         fun onState(message: String)
         fun onTranscript(text: String)
         fun onError(message: String)
+        fun onSpeechStarted() = Unit
+        fun onSpeechFinished() = Unit
     }
 
     private val appContext = context.applicationContext
@@ -65,7 +68,7 @@ class ArianaVoiceController(
         }
         val spoken = text.trim().take(2400)
         if (spoken.isEmpty()) return
-        tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "ariana-x88-voice-v2")
+        tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "ariana-x88-voice-v3")
     }
 
     fun shutdown() {
@@ -85,7 +88,26 @@ class ArianaVoiceController(
             result != TextToSpeech.LANG_NOT_SUPPORTED
         if (!ttsReady) {
             listener.onError("Für Android-TTS fehlt eine deutsche Stimme.")
+            return
         }
+
+        tts.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    listener.onSpeechStarted()
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    listener.onSpeechFinished()
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) {
+                    listener.onSpeechFinished()
+                    listener.onError("Android-TTS konnte die Ausgabe nicht abschließen.")
+                }
+            },
+        )
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
@@ -97,7 +119,6 @@ class ArianaVoiceController(
     }
 
     override fun onRmsChanged(rmsdB: Float) = Unit
-
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
     override fun onEndOfSpeech() {
@@ -131,11 +152,9 @@ class ArianaVoiceController(
             listener.onError("Kein Text erkannt.")
             return
         }
-
         listener.onTranscript(text)
     }
 
     override fun onPartialResults(partialResults: Bundle?) = Unit
-
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 }
