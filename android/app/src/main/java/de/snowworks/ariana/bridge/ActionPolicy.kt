@@ -6,9 +6,8 @@ import de.snowworks.ariana.ArianaGate
 /**
  * Classifies proposed device actions without executing them.
  *
- * This is intentionally separate from LocalBridgeServer.action(): AI-facing
- * proposals can only receive a decision. Execution still requires the existing
- * local admin/action path and, for sensitive starts, visible user interaction.
+ * CONFIRM decisions are additionally registered in the volatile local approval
+ * store so the user can review them on-device. No device action is started here.
  */
 object ActionPolicy {
     enum class Decision { SAFE, CONFIRM, BLOCKED }
@@ -18,6 +17,7 @@ object ActionPolicy {
         val decision: Decision,
         val reason: String,
         val executable: Boolean = false,
+        val pendingProposalId: String? = null,
     )
 
     private val actionPattern = Regex("^[a-z][a-z0-9_]{0,79}$")
@@ -72,11 +72,16 @@ object ActionPolicy {
                 decision = Decision.SAFE,
                 reason = "NON_ESCALATING_OR_STATUS_ACTION",
             )
-            in confirm -> Evaluation(
-                action = action,
-                decision = Decision.CONFIRM,
-                reason = "VISIBLE_USER_CONFIRMATION_REQUIRED",
-            )
+            in confirm -> {
+                val reason = "VISIBLE_USER_CONFIRMATION_REQUIRED"
+                val pending = ActionApprovalStore.createPending(action, reason)
+                Evaluation(
+                    action = action,
+                    decision = Decision.CONFIRM,
+                    reason = reason,
+                    pendingProposalId = pending.id,
+                )
+            }
             else -> Evaluation(
                 action = action,
                 decision = Decision.BLOCKED,
