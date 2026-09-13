@@ -81,6 +81,39 @@ jobs:
           grep -F 'ARIANA Core v2 · OK' "$ui_file"
           grep -F 'check.skipped' "$ui_file"
 
+      - name: X-88 action proposal v1 non-execution gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          policy_file='android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+          server_file='android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt'
+          test_file='android/app/src/main/java/de/snowworks/ariana/bridge/BridgeSelfTest.kt'
+
+          grep -F 'enum class Decision { SAFE, CONFIRM, BLOCKED }' "$policy_file"
+          grep -F 'val executable: Boolean = false' "$policy_file"
+          grep -F '"camera_start"' "$policy_file"
+          grep -F 'decision = Decision.CONFIRM' "$policy_file"
+          grep -F 'reason = "ACTION_NOT_ALLOWLISTED"' "$policy_file"
+          ! grep -F 'ArianaCaptureService' "$policy_file"
+          ! grep -F 'CameraFrameStore' "$policy_file"
+
+          grep -F 'path == "/v1/action/proposal" && method == "POST"' "$server_file"
+          grep -F 'private fun actionProposal' "$server_file"
+          grep -F '.put("model", "x88-action-proposal-v1")' "$server_file"
+          grep -F '.put("executable", evaluation.executable)' "$server_file"
+
+          proposal_body="$(awk '/private fun actionProposal/{flag=1} /private fun providerHttpStatus/{flag=0} flag' "$server_file")"
+          grep -F 'ActionPolicy.evaluate' <<<"$proposal_body"
+          ! grep -F 'action(context' <<<"$proposal_body"
+          ! grep -F 'ArianaCaptureService' <<<"$proposal_body"
+          ! grep -F 'DialogueRouter.generate' <<<"$proposal_body"
+
+          grep -F 'name = "ActionProposal Bearer-Gate"' "$test_file"
+          grep -F 'expectedDecision = "SAFE"' "$test_file"
+          grep -F 'expectedDecision = "CONFIRM"' "$test_file"
+          grep -F 'expectedDecision = "BLOCKED"' "$test_file"
+          grep -F '!json.optBoolean("executable", true)' "$test_file"
+
       - name: Assemble debug APK
         working-directory: android
         env:
