@@ -122,6 +122,7 @@ object LocalBridgeServer {
         val result = when {
             path == "/v1/session" && method == "POST" -> exchangeDialogueSession(body, headers)
             path == "/v1/dialogue" && method == "POST" -> dialogue(context, body, headers)
+            path == "/v1/action/proposal" && method == "POST" -> actionProposal(context, body, headers)
             path.startsWith("/v1/") -> HttpResult(404, error("NOT_FOUND", "Unbekannter X-88-Endpunkt."))
             headers["x-ariana-token"] != token -> HttpResult(
                 401,
@@ -230,6 +231,38 @@ object LocalBridgeServer {
                 .put("model", "x88-loopback-dialogue-response-v1")
                 .put("providerId", outcome.providerId)
                 .put("reply", outcome.reply),
+        )
+    }
+
+    private fun actionProposal(context: Context, body: String, headers: Map<String, String>): HttpResult {
+        val requestId = UUID.randomUUID().toString()
+        if (!DialogueSessionStore.validateBearer(headers["authorization"])) {
+            return HttpResult(
+                401,
+                error("DIALOGUE_SESSION_UNAUTHORIZED", "X-88 Session-Token fehlt oder ist abgelaufen.", requestId),
+            )
+        }
+
+        val root = runCatching { JSONObject(body) }.getOrElse {
+            return HttpResult(400, error("INVALID_JSON", "JSON konnte nicht gelesen werden.", requestId))
+        }
+        val action = root.optString("action").trim()
+        if (action.isEmpty()) {
+            return HttpResult(400, error("INVALID_ACTION", "Aktionsname fehlt.", requestId))
+        }
+
+        val evaluation = ActionPolicy.evaluate(context, action)
+        return HttpResult(
+            200,
+            JSONObject()
+                .put("ok", true)
+                .put("requestId", requestId)
+                .put("model", "x88-action-proposal-v1")
+                .put("action", evaluation.action)
+                .put("decision", evaluation.decision.name)
+                .put("reason", evaluation.reason)
+                .put("executable", evaluation.executable)
+                .put("requiresUserConfirmation", evaluation.decision == ActionPolicy.Decision.CONFIRM),
         )
     }
 
