@@ -65,7 +65,8 @@ jobs:
           set -euo pipefail
           APK="$(find android/app/build/outputs/apk/sideload -name '*.apk' -type f | head -n 1)"
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          APKANALYZER="$(find "$ANDROID_HOME" -type f -name apkanalyzer | head -n 1)"
+          APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
           "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/sideload/signing-certificate.txt
           echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/sideload/signing-certificate.txt
           "$APKANALYZER" manifest print "$APK" > android/app/build/outputs/apk/sideload/merged-manifest.xml
