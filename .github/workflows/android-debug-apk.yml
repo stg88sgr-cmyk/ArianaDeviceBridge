@@ -114,6 +114,45 @@ jobs:
           grep -F 'expectedDecision = "BLOCKED"' "$test_file"
           grep -F '!json.optBoolean("executable", true)' "$test_file"
 
+      - name: X-88 human approval v1 non-execution gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          approval_file='android/app/src/main/java/de/snowworks/ariana/bridge/ActionApprovalStore.kt'
+          policy_file='android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+          session_file='android/app/src/main/java/de/snowworks/ariana/bridge/DialogueSessionStore.kt'
+          test_file='android/app/src/main/java/de/snowworks/ariana/bridge/BridgeSelfTest.kt'
+          ui_file='android/app/src/main/java/de/snowworks/app/ui/DeviceGrantsActivity.kt'
+
+          grep -F 'const val PROPOSAL_TTL_MS = 2 * 60 * 1000L' "$approval_file"
+          grep -F 'const val APPROVAL_TTL_MS = 60 * 1000L' "$approval_file"
+          grep -F 'fun createPending' "$approval_file"
+          grep -F 'fun approve' "$approval_file"
+          grep -F 'fun deny' "$approval_file"
+          grep -F 'fun consumeForAction' "$approval_file"
+          grep -F 'fun revokeAll' "$approval_file"
+          ! grep -F 'import android.' "$approval_file"
+          ! grep -F 'ArianaCaptureService' "$approval_file"
+          ! grep -F 'CameraFrameStore' "$approval_file"
+          ! grep -F 'NotificationStore' "$approval_file"
+          ! grep -F 'ArianaDeviceApi' "$approval_file"
+
+          grep -F 'ActionApprovalStore.createPending' "$policy_file"
+          grep -F 'pendingProposalId = pending.id' "$policy_file"
+          grep -F 'ActionApprovalStore.revokeAll()' "$session_file"
+
+          grep -F 'name = "Approval Pending-Queue"' "$test_file"
+          grep -F 'name = "Lokale Einmalfreigabe"' "$test_file"
+          grep -F 'name = "Approval Action-Bindung + Einmaligkeit"' "$test_file"
+          grep -F 'consumeForAction("microphone_start") == null' "$test_file"
+          grep -F 'consumeForAction("camera_start")' "$test_file"
+
+          grep -F 'X-88 Aktionsfreigaben' "$ui_file"
+          grep -F 'ActionApprovalStore.approve' "$ui_file"
+          grep -F 'ActionApprovalStore.deny' "$ui_file"
+          grep -F 'Noch nichts ausgeführt' "$ui_file"
+          grep -F 'ActionApprovalStore.revokeAll()' "$ui_file"
+
       - name: Assemble debug APK
         working-directory: android
         env:
