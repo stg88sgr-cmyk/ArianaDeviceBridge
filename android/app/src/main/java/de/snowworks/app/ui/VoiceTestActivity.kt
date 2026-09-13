@@ -5,7 +5,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
-import android.provider.Settings
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -24,6 +23,7 @@ import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeActionClient
+import de.snowworks.ariana.bridge.LocalDeviceActionExecutor
 import de.snowworks.ariana.voice.ArianaVoiceController
 import de.snowworks.ariana.voice.VoiceIntentRouter
 import java.util.concurrent.Executors
@@ -291,7 +291,7 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 return@execute
             }
 
-            val evaluation = ActionPolicy.evaluate(applicationContext, "open_settings")
+            val evaluation = ActionPolicy.evaluate(applicationContext, LocalDeviceActionExecutor.ACTION_OPEN_SETTINGS)
             val proposalId = evaluation.pendingProposalId
             if (evaluation.decision != ActionPolicy.Decision.CONFIRM || proposalId.isNullOrBlank()) {
                 runOnUiThread {
@@ -326,22 +326,27 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                     }
                     .setPositiveButton("Öffnen") { _, _ ->
                         val grant = ActionApprovalStore.approve(proposalId)
-                        val consumed = grant?.let {
-                            ActionApprovalStore.consumeGrant(
-                                grantId = it.id,
-                                action = "open_settings",
-                            )
-                        }
-                        if (consumed == null) {
+                        if (grant == null) {
                             statusView.text = "Status: Freigabe ungültig oder abgelaufen"
                             replyView.text = "Ariana: Die Einmalfreigabe ist ungültig oder abgelaufen."
                             toast("Einmalfreigabe ungültig oder abgelaufen. Bitte erneut sprechen.")
                             return@setPositiveButton
                         }
 
+                        val execution = LocalDeviceActionExecutor.execute(
+                            context = applicationContext,
+                            grantId = grant.id,
+                            action = LocalDeviceActionExecutor.ACTION_OPEN_SETTINGS,
+                        )
+                        if (!execution.ok) {
+                            statusView.text = "Status: bestätigte Aktion fehlgeschlagen"
+                            replyView.text = "Ariana: Die bestätigte Aktion konnte nicht ausgeführt werden."
+                            toast("Aktion fehlgeschlagen: ${execution.error ?: "unbekannter Fehler"}")
+                            return@setPositiveButton
+                        }
+
                         statusView.text = "Status: bestätigte Aktion ausgeführt"
-                        replyView.text = "Ariana: Öffne Android-Einstellungen."
-                        startActivity(Intent(Settings.ACTION_SETTINGS))
+                        replyView.text = "Ariana: Android-Einstellungen geöffnet."
                     }
                     .setOnCancelListener {
                         ActionApprovalStore.deny(proposalId)
