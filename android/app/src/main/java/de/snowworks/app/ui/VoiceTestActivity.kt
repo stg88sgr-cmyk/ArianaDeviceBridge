@@ -25,7 +25,7 @@ import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeActionClient
 import de.snowworks.ariana.voice.ArianaVoiceController
-import java.util.Locale
+import de.snowworks.ariana.voice.VoiceIntentRouter
 import java.util.concurrent.Executors
 
 class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
@@ -240,40 +240,19 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
     }
 
-    private fun tryHandleLocalDeviceIntent(text: String): Boolean {
-        val normalized = normalizeIntent(text)
-
-        val openSettingsRequested = listOf(
-            "einstellungen oeffnen",
-            "oeffne einstellungen",
-            "android einstellungen",
-            "handy einstellungen",
-            "telefon einstellungen",
-            "systemeinstellungen oeffnen",
-            "oeffne systemeinstellungen",
-        ).any(normalized::contains)
-
-        if (openSettingsRequested) {
+    private fun tryHandleLocalDeviceIntent(text: String): Boolean = when (VoiceIntentRouter.classify(text)) {
+        VoiceIntentRouter.Intent.OPEN_SETTINGS -> {
             requestOpenSettingsAction()
-            return true
+            true
         }
+        VoiceIntentRouter.Intent.DEVICE_STATUS -> {
+            requestDeviceStatus()
+            true
+        }
+        VoiceIntentRouter.Intent.NONE -> false
+    }
 
-        val deviceStatusRequested = listOf(
-            "geraetestatus",
-            "geraete status",
-            "status vom telefon",
-            "status des telefons",
-            "telefon status",
-            "status vom geraet",
-            "status des geraets",
-            "bridge status",
-            "status der bridge",
-            "dein geraetezugriff",
-            "wie ist dein zugriff",
-        ).any(normalized::contains)
-
-        if (!deviceStatusRequested) return false
-
+    private fun requestDeviceStatus() {
         dialogueExecutor.execute {
             val result = LocalBridgeActionClient.execute(applicationContext, "get_device_status")
             val reply = if (result.ok) {
@@ -297,7 +276,6 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 voice.speak(reply)
             }
         }
-        return true
     }
 
     private fun requestOpenSettingsAction() {
@@ -372,16 +350,6 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
         }
     }
-
-    private fun normalizeIntent(text: String): String = text
-        .lowercase(Locale.GERMAN)
-        .replace('ß', 's')
-        .replace("ä", "ae")
-        .replace("ö", "oe")
-        .replace("ü", "ue")
-        .replace(Regex("[^a-z0-9 ]+"), " ")
-        .replace(Regex("\\s+"), " ")
-        .trim()
 
     private fun requestDialogue(text: String) {
         if (DialogueRouter.providerId() == null) {
