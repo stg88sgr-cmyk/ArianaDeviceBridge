@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - "android/**"
+      - ".github/signing/**"
       - ".github/workflows/android-sideload-apk.yml"
 
 jobs:
@@ -29,37 +30,57 @@ jobs:
         with:
           gradle-version: "8.11.1"
 
-      - name: Prepare stable debug signing
+      - name: Prepare stable sideload signing
         shell: bash
         env:
-          ARIANA_DEBUG_KEYSTORE_B64: ${{ secrets.ARIANA_DEBUG_KEYSTORE_B64 }}
-          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
-          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
-          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+          ARIANA_SIGNING_SEED: ${{ secrets.ARIANA_SIGNING_SEED }}
         run: |
           set -euo pipefail
-          if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" && -z "$ARIANA_DEBUG_STORE_PASSWORD" && -z "$ARIANA_DEBUG_KEY_ALIAS" && -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
+          if [[ -z "${ARIANA_SIGNING_SEED:-}" ]]; then
             echo "ARIANA_STABLE_SIGNING=disabled" >> "$GITHUB_ENV"
+            echo "::warning::ARIANA_SIGNING_SEED is not configured. Build will compile, but no installable sideload artifact will be published."
             exit 0
           fi
-          if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" || -z "$ARIANA_DEBUG_STORE_PASSWORD" || -z "$ARIANA_DEBUG_KEY_ALIAS" || -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
-            echo "::error::Stable signing secrets are incomplete."
+
+          SEED="$(printf '%s' "$ARIANA_SIGNING_SEED" | tr -d '\r\n')"
+          if [[ ${#SEED} -lt 32 ]]; then
+            echo "::error::ARIANA_SIGNING_SEED must contain at least 32 characters."
             exit 1
           fi
-          printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-debug.jks"
-          chmod 600 "$RUNNER_TEMP/ariana-debug.jks"
-          echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-debug.jks" >> "$GITHUB_ENV"
-          echo "ARIANA_STABLE_SIGNING=enabled" >> "$GITHUB_ENV"
+          echo "::add-mask::$SEED"
+
+          python3 -m pip install --quiet --disable-pip-version-check "cryptography==46.0.4"
+          export ARIANA_SIGNING_SEED="$SEED"
+          python3 .github/signing/derive_signing.py \
+            --certificate .github/signing/ariana-sideload-cert.pem \
+            --output "$RUNNER_TEMP/ariana-sideload.p12"
+
+          keytool -importkeystore \
+            -srckeystore "$RUNNER_TEMP/ariana-sideload.p12" \
+            -srcstoretype PKCS12 \
+            -srcstorepass "$SEED" \
+            -srcalias ariana-sideload \
+            -destkeystore "$RUNNER_TEMP/ariana-sideload.jks" \
+            -deststoretype JKS \
+            -deststorepass "$SEED" \
+            -destkeypass "$SEED" \
+            -destalias ariana-sideload \
+            -noprompt
+          chmod 600 "$RUNNER_TEMP/ariana-sideload.jks"
+
+          {
+            echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-sideload.jks"
+            echo "ARIANA_DEBUG_STORE_PASSWORD=$SEED"
+            echo "ARIANA_DEBUG_KEY_ALIAS=ariana-sideload"
+            echo "ARIANA_DEBUG_KEY_PASSWORD=$SEED"
+            echo "ARIANA_STABLE_SIGNING=enabled"
+          } >> "$GITHUB_ENV"
 
       - name: Assemble sideload APK
         working-directory: android
-        env:
-          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
-          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
-          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
         run: gradle :app:assembleSideload --stacktrace
 
-      - name: Verify sensitive listener removed
+      - name: Verify package, sensitive listener, and signing identity
         shell: bash
         run: |
           set -euo pipefail
@@ -67,8 +88,20 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort -V | tail -n 1)"
           test -n "$APKANALYZER"
-          "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/sideload/signing-certificate.txt
+
+          SIGNING_INFO="$("$APKSIGNER" verify --print-certs "$APK")"
+          printf '%s\n' "$SIGNING_INFO" | tee android/app/build/outputs/apk/sideload/signing-certificate.txt
           echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/sideload/signing-certificate.txt
+
+          if [[ "${ARIANA_STABLE_SIGNING:-disabled}" == "enabled" ]]; then
+            EXPECTED="$(openssl x509 -in .github/signing/ariana-sideload-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            ACTUAL="$(printf '%s\n' "$SIGNING_INFO" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]')"
+            if [[ -z "$ACTUAL" || "$ACTUAL" != "$EXPECTED" ]]; then
+              echo "::error::Sideload APK was not signed by the pinned Ariana X-88 certificate."
+              exit 1
+            fi
+          fi
+
           "$APKANALYZER" manifest print "$APK" > android/app/build/outputs/apk/sideload/merged-manifest.xml
           if grep -Fq 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE' android/app/build/outputs/apk/sideload/merged-manifest.xml; then
             echo "::error::Sideload APK still declares notification-listener access."
@@ -77,6 +110,7 @@ jobs:
           grep -F 'package="de.snowworks.app.sideload"' android/app/build/outputs/apk/sideload/merged-manifest.xml
 
       - name: Upload sideload APK
+        if: env.ARIANA_STABLE_SIGNING == 'enabled'
         uses: actions/upload-artifact@v4
         with:
           name: ariana-x88-sideload
