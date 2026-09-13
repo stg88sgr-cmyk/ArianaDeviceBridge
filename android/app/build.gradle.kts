@@ -52,12 +52,18 @@ android {
             versionNameSuffix = "-sideload"
             buildConfigField("boolean", "BOOTSTRAP", "false")
             matchingFallbacks += listOf("debug")
+            if (arianaStableDebugSigningAvailable) {
+                signingConfig = signingConfigs.getByName("arianaStableDebug")
+            }
         }
         create("bootstrap") {
             initWith(getByName("debug"))
             versionNameSuffix = "-bootstrap"
             buildConfigField("boolean", "BOOTSTRAP", "true")
             matchingFallbacks += listOf("debug")
+            if (arianaStableDebugSigningAvailable) {
+                signingConfig = signingConfigs.getByName("arianaStableDebug")
+            }
         }
         release {
             isMinifyEnabled = true
