@@ -11,7 +11,7 @@ import java.net.Socket
  * The protocol checks never invoke the configured AI provider: the valid bearer
  * dialogue request deliberately carries an empty text, so LocalBridgeServer must
  * reject it at input validation before DialogueRouter.generate() can run.
- * Action proposal checks only classify actions and require executable=false.
+ * Action proposal and approval checks only operate on in-memory metadata.
  */
 object BridgeSelfTest {
     data class Check(
@@ -76,7 +76,7 @@ object BridgeSelfTest {
 
         if (DialogueSessionStore.hasActiveSession()) {
             checks += Check(
-                name = "Pairing + Bearer + ActionPolicy",
+                name = "Pairing + Bearer + ActionPolicy + Approval",
                 ok = true,
                 skipped = true,
                 detail = "Übersprungen, weil bereits eine aktive X-88-Dialogsession läuft. Diese Sitzung wurde nicht verändert.",
@@ -85,6 +85,8 @@ object BridgeSelfTest {
         }
 
         try {
+            ActionApprovalStore.revokeAll()
+
             val pairing = DialogueSessionStore.beginPairing()
             val exchangeBody = JSONObject().put("pairingCode", pairing.code).toString()
             val exchange = request(
@@ -199,16 +201,58 @@ object BridgeSelfTest {
                 expectedDecision = "BLOCKED",
                 name = "ActionPolicy BLOCKED",
             )
+
+            val pendingCamera = ActionApprovalStore.listPending().firstOrNull { it.action == "camera_start" }
+            val pendingHealthy = pendingCamera != null && pendingCamera.expiresAtMs > System.currentTimeMillis()
+            checks += Check(
+                name = "Approval Pending-Queue",
+                ok = pendingHealthy,
+                detail = if (pendingHealthy) {
+                    "CONFIRM-Vorschlag liegt flüchtig in der lokalen Queue; keine Geräteaktion wurde ausgeführt."
+                } else {
+                    "CONFIRM-Vorschlag wurde nicht in der lokalen Pending-Queue gefunden."
+                },
+            )
+
+            if (pendingCamera != null) {
+                val grant = ActionApprovalStore.approve(pendingCamera.id)
+                val approvalHealthy = grant != null &&
+                    grant.action == "camera_start" &&
+                    grant.expiresAtMs > System.currentTimeMillis() &&
+                    ActionApprovalStore.listPending().none { it.id == pendingCamera.id }
+                checks += Check(
+                    name = "Lokale Einmalfreigabe",
+                    ok = approvalHealthy,
+                    detail = if (approvalHealthy) {
+                        "Lokale Bestätigung erzeugt nur einen kurzlebigen RAM-Grant; weiterhin keine Geräteausführung."
+                    } else {
+                        "Lokale Bestätigung erzeugte keinen gültigen flüchtigen Grant."
+                    },
+                )
+
+                val wrongActionRejected = ActionApprovalStore.consumeForAction("microphone_start") == null
+                val firstConsume = ActionApprovalStore.consumeForAction("camera_start")
+                val secondConsume = ActionApprovalStore.consumeForAction("camera_start")
+                val oneTimeHealthy = wrongActionRejected && firstConsume != null && secondConsume == null
+                checks += Check(
+                    name = "Approval Action-Bindung + Einmaligkeit",
+                    ok = oneTimeHealthy,
+                    detail = if (oneTimeHealthy) {
+                        "Falsche Aktion kann den Grant nicht nutzen; richtige Aktion kann ihn genau einmal konsumieren. Keine Geräte-API wurde aufgerufen."
+                    } else {
+                        "Action-Bindung oder Einmalverbrauch des Grants ist inkonsistent."
+                    },
+                )
+            }
         } catch (error: Exception) {
             checks += Check(
-                name = "Pairing-/Policy-Protokoll",
+                name = "Pairing-/Policy-/Approval-Protokoll",
                 ok = false,
                 detail = "Lokaler Protokolltest scheiterte: ${error.javaClass.simpleName}",
             )
         } finally {
-            // Der Test wird nur gestartet, wenn vorher keine Dialogsession aktiv war.
-            // Deshalb darf die temporär erzeugte Testsession hier sicher verworfen werden.
             DialogueSessionStore.revoke()
+            ActionApprovalStore.revokeAll()
         }
 
         return finish(checks, state)
@@ -249,7 +293,7 @@ object BridgeSelfTest {
         val passed = checks.size - failed - skipped
         val ok = failed == 0
         val message = buildString {
-            append(if (ok) "ARIANA Core v2: lokale Sicherheitskette OK." else "ARIANA Core v2: Sicherheitskette hat Fehler.")
+            append(if (ok) "ARIANA Core v3: lokale Sicherheitskette OK." else "ARIANA Core v3: Sicherheitskette hat Fehler.")
             append("\n$passed geprüft")
             if (skipped > 0) append(" · $skipped übersprungen")
             if (failed > 0) append(" · $failed fehlgeschlagen")
