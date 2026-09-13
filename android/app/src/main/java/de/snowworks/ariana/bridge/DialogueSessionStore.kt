@@ -78,6 +78,7 @@ object DialogueSessionStore {
         val current = session ?: return false
         if (nowMs > current.expiresAtMs) {
             session = null
+            ActionApprovalStore.revokeAll()
             return false
         }
         val supplied = authorization
@@ -96,6 +97,7 @@ object DialogueSessionStore {
     fun revoke() {
         pairing = null
         session = null
+        ActionApprovalStore.revokeAll()
     }
 
     @Synchronized
@@ -103,6 +105,7 @@ object DialogueSessionStore {
         val current = session ?: return false
         if (nowMs > current.expiresAtMs) {
             session = null
+            ActionApprovalStore.revokeAll()
             return false
         }
         return true
