@@ -74,6 +74,49 @@ object BridgeSelfTest {
             return finish(checks, state)
         }
 
+        val actionStatusResponse = runCatching {
+            request(
+                method = "POST",
+                path = "/action",
+                headers = mapOf("X-Ariana-Token" to token),
+                body = JSONObject().put("action", "get_device_status").toString(),
+            )
+        }.getOrElse { error ->
+            checks += Check(
+                name = "E2E /action get_device_status",
+                ok = false,
+                detail = "End-to-End-Aufruf scheiterte: ${error.javaClass.simpleName}",
+            )
+            return finish(checks, state)
+        }
+
+        val masterOpen = state?.let {
+            it.optBoolean("masterEnabled", false) && !it.optBoolean("blocked", false)
+        } == true
+        val actionStatusHealthy = if (masterOpen) {
+            actionStatusResponse.status == 200 &&
+                actionStatusResponse.json?.optBoolean("ok", false) == true &&
+                actionStatusResponse.json.optString("bridge") == expectedBridge
+        } else {
+            actionStatusResponse.status == 400 &&
+                actionStatusResponse.json?.optString("error") == "MASTER_DISABLED"
+        }
+        checks += Check(
+            name = "E2E /action get_device_status",
+            ok = actionStatusHealthy,
+            detail = when {
+                actionStatusHealthy && masterOpen ->
+                    "POST /action → get_device_status → echter Bridge-State erfolgreich."
+                actionStatusHealthy ->
+                    "POST /action erreicht den Dispatcher; Master-Gate blockiert erwartungsgemäß."
+                else ->
+                    "HTTP ${actionStatusResponse.status}; Action-Dispatcher oder Gate liefert nicht den erwarteten Status."
+            },
+        )
+        if (!actionStatusHealthy) {
+            return finish(checks, state)
+        }
+
         if (DialogueSessionStore.hasActiveSession()) {
             checks += Check(
                 name = "Pairing + Bearer + ActionPolicy + Approval",
