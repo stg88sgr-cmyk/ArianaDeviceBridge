@@ -46,6 +46,13 @@ android {
                 signingConfig = signingConfigs.getByName("arianaStableDebug")
             }
         }
+        create("sideload") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".sideload"
+            versionNameSuffix = "-sideload"
+            buildConfigField("boolean", "BOOTSTRAP", "false")
+            matchingFallbacks += listOf("debug")
+        }
         create("bootstrap") {
             initWith(getByName("debug"))
             versionNameSuffix = "-bootstrap"
@@ -56,7 +63,8 @@ android {
             isMinifyEnabled = true
             buildConfigField("boolean", "BOOTSTRAP", "false")
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            )
         }
     }
 
