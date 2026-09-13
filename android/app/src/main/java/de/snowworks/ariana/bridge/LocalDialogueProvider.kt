@@ -38,26 +38,25 @@ class LocalDialogueProvider(
         }
 
         val engine = inference ?: createEngine().also { inference = it }
-        val session = try {
-            LlmInferenceSession.createFromOptions(
-                engine,
-                LlmInferenceSession.LlmInferenceSessionOptions.builder()
-                    .setTemperature(0.7f)
-                    .setTopK(40)
-                    .setTopP(0.9f)
-                    .build(),
-            )
-        } catch (error: Throwable) {
-            throw DialogueRouter.ProviderException("LOCAL_SESSION_FAILED", error)
-        }
 
         try {
-            session.addQueryChunk(gemmaPrompt(clean))
-            val result = session.generateResponse().trim()
+            val attempts = listOf(
+                gemmaPrompt(clean),
+                minimalGemmaPrompt(clean),
+                clean,
+            )
+            var result = ""
+            for (prompt in attempts) {
+                result = generateOnce(engine, prompt)
+                if (result.isNotBlank()) break
+            }
             if (result.isBlank()) {
                 throw DialogueRouter.ProviderException("LOCAL_EMPTY_REPLY")
             }
-            val reply = result.take(DialogueRouter.MAX_REPLY_CHARS)
+            val reply = normalizeGeneratedReply(result).take(DialogueRouter.MAX_REPLY_CHARS)
+            if (reply.isBlank()) {
+                throw DialogueRouter.ProviderException("LOCAL_EMPTY_REPLY")
+            }
             remember(clean, reply)
             reply
         } catch (error: DialogueRouter.ProviderException) {
@@ -66,6 +65,26 @@ class LocalDialogueProvider(
             throw DialogueRouter.ProviderException("LOCAL_OUT_OF_MEMORY", error)
         } catch (error: Throwable) {
             throw DialogueRouter.ProviderException("LOCAL_INFERENCE_FAILED", error)
+        }
+    }
+
+    private fun generateOnce(engine: LlmInference, prompt: String): String {
+        val session = try {
+            LlmInferenceSession.createFromOptions(
+                engine,
+                LlmInferenceSession.LlmInferenceSessionOptions.builder()
+                    .setTemperature(1.0f)
+                    .setTopK(64)
+                    .setTopP(0.95f)
+                    .build(),
+            )
+        } catch (error: Throwable) {
+            throw DialogueRouter.ProviderException("LOCAL_SESSION_FAILED", error)
+        }
+
+        return try {
+            session.addQueryChunk(prompt)
+            session.generateResponse().trim()
         } finally {
             runCatching { session.close() }
         }
@@ -93,8 +112,9 @@ class LocalDialogueProvider(
 
         append("<start_of_turn>user\n")
         append(SYSTEM_CORE)
+
         if (persistent.itemCount > 0) {
-            append("\nDauerhaft lokal gespeicherte Fakten aus ausdrücklichen Nutzerangaben:\n")
+            append("\n\nDauerhaft lokal gespeicherte Fakten:\n")
             persistent.userName?.let { name ->
                 append("- Der Nutzer heißt ")
                 append(name)
@@ -105,24 +125,35 @@ class LocalDialogueProvider(
                 append(fact)
                 append("\n")
             }
-            append("Nutze diese Fakten nur, wenn sie für die aktuelle Nachricht relevant sind. Bei 'Wie heiße ich?' meint 'ich' den Nutzer.")
-        }
-        append("\n<end_of_turn>\n")
-        append("<start_of_turn>model\nVerstanden.\n<end_of_turn>\n")
-
-        history.forEach { turn ->
-            append("<start_of_turn>user\n")
-            append(turn.user)
-            append("\n<end_of_turn>\n")
-            append("<start_of_turn>model\n")
-            append(turn.assistant)
-            append("\n<end_of_turn>\n")
         }
 
+        if (history.isNotEmpty()) {
+            append("\nBisheriger Gesprächsverlauf:\n")
+            history.forEach { turn ->
+                append("Nutzer: ")
+                append(turn.user)
+                append("\nAriana: ")
+                append(turn.assistant)
+                append('\n')
+            }
+        }
+
+        append("\nAktuelle Nachricht des Nutzers:\n")
+        append(currentUserText)
+        append("\n<end_of_turn>\n<start_of_turn>model\n")
+    }
+
+    private fun minimalGemmaPrompt(currentUserText: String): String = buildString {
         append("<start_of_turn>user\n")
         append(currentUserText)
         append("\n<end_of_turn>\n<start_of_turn>model\n")
     }
+
+    private fun normalizeGeneratedReply(raw: String): String = raw
+        .substringBefore("<end_of_turn>")
+        .replace("<start_of_turn>model", "")
+        .replace("<start_of_turn>assistant", "")
+        .trim()
 
     /** Returns the explicitly requested durable fact, otherwise null. */
     private fun capturePersistentFacts(text: String): String? {
@@ -257,7 +288,6 @@ class LocalDialogueProvider(
             runCatching { inference?.close() }
             inference = null
             history.clear()
-            // Durable LocalMemoryStore facts intentionally survive runtime/process restarts.
         }
     }
 
