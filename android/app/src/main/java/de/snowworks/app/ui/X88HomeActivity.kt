@@ -27,6 +27,7 @@ import de.snowworks.ariana.bridge.ActionPolicy
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalDeviceActionExecutor
 import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
@@ -88,7 +89,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
         voice = ArianaVoiceController(this, this)
-        if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)) {
+        if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
+            !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
+        ) {
             runCatching { AiProviderManager.activateConfigured(this) }
         }
         setContentView(buildUi())
@@ -98,6 +101,11 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onResume() {
         super.onResume()
+        if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
+            !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
+        ) {
+            runCatching { AiProviderManager.activateConfigured(this) }
+        }
         if (::statusView.isInitialized) refreshStatus()
     }
 

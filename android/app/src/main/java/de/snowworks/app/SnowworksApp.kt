@@ -4,6 +4,7 @@ import android.app.Application
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
 
@@ -22,7 +23,9 @@ class SnowworksApp : Application() {
 
         // Prefer an explicitly enabled on-device model. Fall back to a previously
         // configured HTTPS provider only when no local model is active.
-        if (!LocalAiProviderManager.activateConfigured(this)) {
+        if (!LoopbackArianaProviderManager.activateIfAvailable() &&
+            !LocalAiProviderManager.activateConfigured(this)
+        ) {
             AiProviderManager.activateConfigured(this)
         }
     }
