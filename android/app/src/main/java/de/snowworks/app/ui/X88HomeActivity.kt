@@ -27,6 +27,7 @@ import de.snowworks.ariana.bridge.ActionPolicy
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LoopbackArianaProvider
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalDeviceActionExecutor
 import de.snowworks.ariana.files.TreePermissionStore
@@ -34,6 +35,7 @@ import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.voice.ArianaVoiceController
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var api: ArianaDeviceApi
@@ -48,9 +50,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var replyView: TextView
     private lateinit var modulesView: TextView
     private var pendingPermissionFeature: Feature? = null
+    @Volatile private var coreStatusLabel = "CORE · CHECKING"
 
     private val dialogueExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88HomeDialogue").apply { isDaemon = true }
+    }
+    private val healthExecutor = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread(runnable, "ArianaX88CoreHealth").apply { isDaemon = true }
     }
 
     private val permissionLauncher =
@@ -97,6 +103,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         setContentView(buildUi())
         X88EventJournal.add("home_open")
         refreshStatus()
+        startCoreHealthMonitor()
     }
 
     override fun onResume() {
@@ -111,8 +118,25 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onDestroy() {
         dialogueExecutor.shutdownNow()
+        healthExecutor.shutdownNow()
         voice.shutdown()
         super.onDestroy()
+    }
+
+    private fun startCoreHealthMonitor() {
+        healthExecutor.scheduleWithFixedDelay({
+            val health = LoopbackArianaProvider().health()
+            coreStatusLabel = if (health.online) {
+                val gen = health.generation?.let { "GEN $it" } ?: "GEN ?"
+                val branch = health.branch?.uppercase() ?: "UNKNOWN"
+                "CORE ONLINE · $gen · $branch"
+            } else {
+                "CORE OFFLINE"
+            }
+            runOnUiThread {
+                if (!isFinishing && !isDestroyed && ::statusView.isInitialized) refreshStatus()
+            }
+        }, 0L, 5L, TimeUnit.SECONDS)
     }
 
     private fun buildUi(): ScrollView {
@@ -419,7 +443,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             masterOn -> "MASTER ON"
             else -> "MASTER OFF"
         }
-        statusView.text = "$state · ${connection.label} · CAM ${onOff(camera.sessionActive)} · MIC ${onOff(microphone.sessionActive)} · SCREEN ${onOff(screen.sessionActive)}"
+        statusView.text = "$coreStatusLabel\n$state · ${connection.label} · CAM ${onOff(camera.sessionActive)} · MIC ${onOff(microphone.sessionActive)} · SCREEN ${onOff(screen.sessionActive)}"
         masterButton.text = if (masterOn) "MASTER · ON" else "MASTER · OFF"
         cameraButton.text = if (camera.sessionActive) "CAMERA · ON" else "CAMERA · OFF"
         microphoneButton.text = if (microphone.sessionActive) "MIC · ON" else "MIC · OFF"

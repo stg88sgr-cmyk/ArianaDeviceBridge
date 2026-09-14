@@ -7,10 +7,29 @@ import java.net.URL
 
 /** Hard-coded same-device Ariana Core client. */
 class LoopbackArianaProvider {
-    fun isHealthy(): Boolean = runCatching {
+    data class Health(
+        val online: Boolean,
+        val generation: Int? = null,
+        val branch: String? = null,
+    )
+
+    fun health(): Health = runCatching {
         val c = open("/health", "GET", 700, 700)
-        try { c.responseCode == 200 } finally { c.disconnect() }
-    }.getOrDefault(false)
+        try {
+            if (c.responseCode != 200) return@runCatching Health(false)
+            val body = c.inputStream.bufferedReader().use { it.readText() }
+            val root = JSONObject(body)
+            Health(
+                online = root.optString("status") == "ok",
+                generation = root.optInt("generation").takeIf { root.has("generation") },
+                branch = root.optString("branch").takeIf { it.isNotBlank() },
+            )
+        } finally {
+            c.disconnect()
+        }
+    }.getOrElse { Health(false) }
+
+    fun isHealthy(): Boolean = health().online
 
     fun generate(text: String): String {
         val payload = JSONObject()
