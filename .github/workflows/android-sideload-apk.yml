@@ -7,6 +7,13 @@ on:
       - "android/**"
       - ".github/signing/**"
       - ".github/workflows/android-sideload-apk.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/signing/**"
+      - ".github/workflows/android-sideload-apk.yml"
 
 jobs:
   assemble-sideload:
