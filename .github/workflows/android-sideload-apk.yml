@@ -130,3 +130,25 @@ jobs:
             android/app/build/outputs/apk/sideload/signing-certificate.txt
             android/app/build/outputs/apk/sideload/merged-manifest.xml
           if-no-files-found: error
+
+      - name: Stage local signing kit
+        if: env.ARIANA_STABLE_SIGNING != 'enabled'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          APKSIGNER_JAR="$(dirname "$APKSIGNER")/lib/apksigner.jar"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" android/app/build/outputs/apk/sideload/apksigner.jar
+
+      - name: Upload local signing kit
+        if: env.ARIANA_STABLE_SIGNING != 'enabled'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ariana-x88-sideload-local-signing-input
+          path: |
+            android/app/build/outputs/apk/sideload/*.apk
+            android/app/build/outputs/apk/sideload/signing-certificate.txt
+            android/app/build/outputs/apk/sideload/merged-manifest.xml
+            android/app/build/outputs/apk/sideload/apksigner.jar
+          if-no-files-found: error
