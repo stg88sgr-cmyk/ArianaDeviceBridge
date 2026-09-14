@@ -7,6 +7,7 @@ import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.thermal.ThermalSafetyController
 
 class SnowworksApp : Application() {
     override fun onCreate() {
@@ -15,6 +16,11 @@ class SnowworksApp : Application() {
         // App boot must never crash because an optional subsystem fails.
         runCatching { SessionRegistry.clear() }
             .onFailure { Log.e(TAG, "SessionRegistry.clear failed", it) }
+
+        // Thermal safety starts before bridge/provider activation so a hot device
+        // cannot start heavyweight local work during process boot.
+        runCatching { ThermalSafetyController.start(this) }
+            .onFailure { Log.e(TAG, "ThermalSafetyController.start failed", it) }
 
         val gate = runCatching { ArianaGate(this) }
             .onFailure { Log.e(TAG, "ArianaGate init failed", it) }
@@ -26,6 +32,7 @@ class SnowworksApp : Application() {
         }
 
         // Provider activation is optional. A broken model/provider must not block UI startup.
+        // LocalAiProviderManager also checks the live thermal policy before loading a model.
         val localActivated = runCatching { LocalAiProviderManager.activateConfigured(this) }
             .onFailure { Log.e(TAG, "Local AI provider activation failed", it) }
             .getOrDefault(false)
