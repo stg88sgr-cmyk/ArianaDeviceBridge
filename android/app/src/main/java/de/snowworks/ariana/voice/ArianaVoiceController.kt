@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -25,6 +27,7 @@ class ArianaVoiceController(
     }
 
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
@@ -40,17 +43,17 @@ class ArianaVoiceController(
                 null
             }
         }.onFailure {
-            listener.onError("Lokale Spracherkennung konnte nicht initialisiert werden.")
+            reportError("Lokale Spracherkennung konnte nicht initialisiert werden.")
         }.getOrNull()
 
         runCatching { recognizer?.setRecognitionListener(this) }
             .onFailure {
                 recognizer = null
-                listener.onError("Lokale Spracherkennung konnte nicht verbunden werden.")
+                reportError("Lokale Spracherkennung konnte nicht verbunden werden.")
             }
 
         tts = runCatching { TextToSpeech(appContext, this) }
-            .onFailure { listener.onError("Android-TTS konnte nicht gestartet werden.") }
+            .onFailure { reportError("Android-TTS konnte nicht gestartet werden.") }
             .getOrNull()
     }
 
@@ -59,7 +62,7 @@ class ArianaVoiceController(
     fun startListening() {
         val localRecognizer = recognizer
         if (localRecognizer == null) {
-            listener.onError("Lokale Spracherkennung ist auf diesem Gerät nicht verfügbar.")
+            reportError("Lokale Spracherkennung ist auf diesem Gerät nicht verfügbar.")
             return
         }
 
@@ -73,13 +76,13 @@ class ArianaVoiceController(
 
         listener.onState("Ich höre zu …")
         runCatching { localRecognizer.startListening(intent) }
-            .onFailure { listener.onError("Spracherkennung konnte nicht gestartet werden.") }
+            .onFailure { reportError("Spracherkennung konnte nicht gestartet werden.") }
     }
 
     fun speak(text: String) {
         val localTts = tts
         if (!ttsReady || localTts == null) {
-            listener.onError("Die lokale Sprachausgabe ist noch nicht bereit.")
+            reportError("Die lokale Sprachausgabe ist noch nicht bereit.")
             return
         }
 
@@ -91,11 +94,11 @@ class ArianaVoiceController(
                 spoken,
                 TextToSpeech.QUEUE_FLUSH,
                 null,
-                "ariana-x88-voice-v4",
+                "ariana-x88-voice-v5",
             )
         }.onFailure {
             listener.onSpeechFinished()
-            listener.onError("Android-TTS konnte nicht gestartet werden.")
+            reportError("Android-TTS konnte nicht gestartet werden.")
         }
     }
 
@@ -113,20 +116,20 @@ class ArianaVoiceController(
     override fun onInit(status: Int) {
         val localTts = tts ?: return
         if (status != TextToSpeech.SUCCESS) {
-            listener.onError("Android-TTS konnte nicht initialisiert werden.")
+            reportError("Android-TTS konnte nicht initialisiert werden.")
             return
         }
 
         val result = runCatching { localTts.setLanguage(Locale.GERMANY) }
             .getOrElse {
-                listener.onError("Android-TTS konnte die deutsche Sprache nicht laden.")
+                reportError("Android-TTS konnte die deutsche Sprache nicht laden.")
                 return
             }
 
         ttsReady = result != TextToSpeech.LANG_MISSING_DATA &&
             result != TextToSpeech.LANG_NOT_SUPPORTED
         if (!ttsReady) {
-            listener.onError("Für Android-TTS fehlt eine deutsche Stimme.")
+            reportError("Für Android-TTS fehlt eine deutsche Stimme.")
             return
         }
 
@@ -144,12 +147,12 @@ class ArianaVoiceController(
                     @Deprecated("Deprecated in Java")
                     override fun onError(utteranceId: String?) {
                         listener.onSpeechFinished()
-                        listener.onError("Android-TTS konnte die Ausgabe nicht abschließen.")
+                        reportError("Android-TTS konnte die Ausgabe nicht abschließen.")
                     }
                 },
             )
         }.onFailure {
-            listener.onError("Android-TTS Ereignisse konnten nicht verbunden werden.")
+            reportError("Android-TTS Ereignisse konnten nicht verbunden werden.")
         }
     }
 
@@ -181,7 +184,7 @@ class ArianaVoiceController(
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Keine Sprache erkannt."
             else -> "Spracherkennung fehlgeschlagen (Code $error)."
         }
-        listener.onError(message)
+        reportError(message)
     }
 
     override fun onResults(results: Bundle?) {
@@ -192,7 +195,7 @@ class ArianaVoiceController(
             .orEmpty()
 
         if (text.isBlank()) {
-            listener.onError("Kein Text erkannt.")
+            reportError("Kein Text erkannt.")
             return
         }
         listener.onTranscript(text)
@@ -200,4 +203,10 @@ class ArianaVoiceController(
 
     override fun onPartialResults(partialResults: Bundle?) = Unit
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+    private fun reportError(message: String) {
+        mainHandler.post {
+            listener.onError(message)
+        }
+    }
 }
