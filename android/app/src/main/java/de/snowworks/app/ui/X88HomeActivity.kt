@@ -135,6 +135,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         root.addView(replyView)
         root.addView(modulesView)
         root.addView(spacer(8))
+        root.addView(button("CHARACTER · PROFILE") {
+            startActivity(Intent(this, X88CharacterActivity::class.java))
+        })
 
         masterButton = button("MASTER") { toggleMaster() }
         cameraButton = button("CAMERA") { toggleFeature(Feature.CAMERA) }

@@ -159,7 +159,7 @@ jobs:
           ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
           ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
           ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
 
       - name: Report APK signing certificate
         shell: bash
