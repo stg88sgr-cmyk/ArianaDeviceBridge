@@ -6,6 +6,12 @@ on:
     paths:
       - "android/**"
       - ".github/workflows/android-debug-apk.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/workflows/android-debug-apk.yml"
 
 jobs:
   assemble-debug:
