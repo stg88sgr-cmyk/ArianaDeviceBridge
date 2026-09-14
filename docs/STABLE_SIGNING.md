@@ -21,9 +21,9 @@ Never commit the keystore, passwords, or base64 keystore payload to the reposito
 
 ## Permanent signing identity
 
-Expected certificate SHA-256 for the generated Snowworks X-88 stable signing kit:
+Expected certificate SHA-256 for the v3 Snowworks X-88 stable signing kit:
 
-`D9:EB:94:97:F5:CA:8F:58:BC:6E:5E:D4:39:4C:D6:6D:AC:31:5B:D1:53:4D:98:3C:7F:65:EA:78:DA:E4:89:83`
+`0A:24:B7:47:5A:DF:23:21:84:23:3E:50:A2:BE:36:8E:CF:55:AF:98:1A:39:48:F3:06:2E:12:CD:C5:7D:30:AB`
 
 Keep an offline backup of the private keystore. Losing it prevents future APKs from updating the same installed Android app identity.
 
@@ -37,12 +37,13 @@ This workflow:
 
 1. refuses to build if any signing secret is missing,
 2. reconstructs the keystore only inside the GitHub runner,
-3. runs unit tests,
-4. builds the reduced-permission `safeinstall` variant,
-5. verifies package id `de.snowworks.app.safe`,
-6. reports the APK signing certificate,
-7. creates an APK SHA-256 report,
-8. uploads the signed APK artifact.
+3. tolerates whitespace and an accidentally copied `ARIANA_DEBUG_KEYSTORE_B64=` prefix,
+4. runs unit tests,
+5. builds the reduced-permission `safeinstall` variant,
+6. verifies package id `de.snowworks.app.safe`,
+7. verifies the exact permanent signing certificate,
+8. creates an APK SHA-256 report,
+9. uploads the signed APK artifact.
 
 ## One-time phone migration
 
