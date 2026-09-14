@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 18
-        versionName = "1.7.0"
+        versionCode = 21
+        versionName = "1.8.0"
     }
 
     signingConfigs {
@@ -50,6 +50,16 @@ android {
             initWith(getByName("debug"))
             applicationIdSuffix = ".sideload"
             versionNameSuffix = "-sideload"
+            buildConfigField("boolean", "BOOTSTRAP", "false")
+            matchingFallbacks += listOf("debug")
+            if (arianaStableDebugSigningAvailable) {
+                signingConfig = signingConfigs.getByName("arianaStableDebug")
+            }
+        }
+        create("stable") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".stable"
+            versionNameSuffix = "-stable"
             buildConfigField("boolean", "BOOTSTRAP", "false")
             matchingFallbacks += listOf("debug")
             if (arianaStableDebugSigningAvailable) {
