@@ -46,7 +46,7 @@ class ArianaDeviceApi(private val context: Context) {
 
         if (!enabled) {
             stopAllSessions()
-            LocalBridgeServer.stop()
+            runCatching { LocalBridgeServer.stop() }
         }
         gate.setMasterEnabled(enabled)
         if (enabled) LocalBridgeServer.start(context)
@@ -135,14 +135,14 @@ class ArianaDeviceApi(private val context: Context) {
     fun stop(feature: Feature): ArianaResult<Unit> {
         SessionRegistry.markActive(feature, false)
         if (feature.needsForegroundService) {
-            ArianaCaptureService.stopFeature(context, feature)
+            runCatching { ArianaCaptureService.stopFeature(context, feature) }
         }
         return ArianaResult.Ok(Unit)
     }
 
     fun stopAll(): ArianaResult<Unit> {
         stopAllSessions()
-        LocalBridgeServer.stop()
+        runCatching { LocalBridgeServer.stop() }
         gate.blockAfterStopAll()
         return ArianaResult.Ok(Unit)
     }
@@ -162,7 +162,10 @@ class ArianaDeviceApi(private val context: Context) {
         )
 
     private fun stopAllSessions() {
-        ArianaCaptureService.stopAll(context)
+        // Stopping an existing service is best-effort because Android may reject a
+        // startService command when this process was launched in the background.
+        // The registry, bridge and gate are still shut down and latched regardless.
+        runCatching { ArianaCaptureService.stopAll(context) }
         SessionRegistry.clear()
     }
 }
