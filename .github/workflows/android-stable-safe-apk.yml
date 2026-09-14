@@ -2,6 +2,12 @@ name: Android Stable Safe APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - x88/v9.4-stable-signing
+    paths:
+      - "android/**"
+      - ".github/workflows/android-stable-safe-apk.yml"
 
 jobs:
   assemble-stable-safe:
