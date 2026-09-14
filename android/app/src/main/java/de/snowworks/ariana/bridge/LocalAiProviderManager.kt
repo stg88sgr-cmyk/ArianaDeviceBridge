@@ -2,6 +2,7 @@ package de.snowworks.ariana.bridge
 
 import android.content.Context
 import android.net.Uri
+import de.snowworks.ariana.thermal.ThermalSafetyController
 
 /** Registers the app-private on-device model as the preferred Ariana dialogue provider. */
 object LocalAiProviderManager {
@@ -17,6 +18,11 @@ object LocalAiProviderManager {
 
     @Synchronized
     fun activateConfigured(context: Context): Boolean {
+        if (!ThermalSafetyController.allowsLocalInference()) {
+            closeRuntime()
+            return false
+        }
+
         val model = LocalModelStore(context).status()
         if (!model.enabled || model.file == null) {
             closeRuntime()
