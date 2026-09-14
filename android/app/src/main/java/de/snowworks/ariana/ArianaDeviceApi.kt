@@ -6,9 +6,10 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
-import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.bridge.LocalBridgeServer
+import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.thermal.ThermalSafetyController
 
 /**
  * Internal interface for permission status, start/stop, master, and errors.
@@ -33,6 +34,16 @@ class ArianaDeviceApi(private val context: Context) {
     fun isBlocked(): Boolean = gate.isBlocked
 
     fun setMasterEnabled(enabled: Boolean): ArianaResult<Unit> {
+        if (enabled && !ThermalSafetyController.allowsMasterEnable()) {
+            val thermal = ThermalSafetyController.currentSnapshot()
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.UNAVAILABLE,
+                    "Gerät thermisch ${thermal.label.lowercase()}. Master bleibt aus, bis Android unter KRITISCH meldet.",
+                ),
+            )
+        }
+
         if (!enabled) {
             stopAllSessions()
             LocalBridgeServer.stop()
@@ -84,6 +95,16 @@ class ArianaDeviceApi(private val context: Context) {
     }
 
     fun start(activity: Activity, feature: Feature, projectionData: Intent? = null): ArianaResult<Unit> {
+        if (feature.needsForegroundService && !ThermalSafetyController.allowsCapture()) {
+            val thermal = ThermalSafetyController.currentSnapshot()
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.UNAVAILABLE,
+                    "${feature.title} bleibt wegen thermischem Status ${thermal.label} gestoppt.",
+                ),
+            )
+        }
+
         val allowed = canUse(feature)
         if (allowed is ArianaResult.Err) return allowed
         return when (feature) {
