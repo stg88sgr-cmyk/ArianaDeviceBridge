@@ -1,18 +1,16 @@
 package de.snowworks.ariana.bridge
 
-/** Prefer the already-running Termux Ariana Core when reachable on loopback. */
+/**
+ * Registers the same-device Ariana Core without doing network I/O on Android's UI thread.
+ * The actual HTTP call runs later inside DialogueRouter's provider executor.
+ */
 object LoopbackArianaProviderManager {
     const val PROVIDER_ID = "local-ai:ariana-core"
 
     @Synchronized
     fun activateIfAvailable(): Boolean {
+        if (DialogueRouter.providerId() == PROVIDER_ID) return true
         val provider = LoopbackArianaProvider()
-        if (!provider.isHealthy()) {
-            if (DialogueRouter.providerId() == PROVIDER_ID) {
-                DialogueRouter.unregister()
-            }
-            return false
-        }
         return DialogueRouter.register(
             providerId = PROVIDER_ID,
             timeoutMs = DialogueRouter.LOCAL_PROVIDER_TIMEOUT_MS,
