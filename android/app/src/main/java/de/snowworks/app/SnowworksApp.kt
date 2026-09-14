@@ -1,6 +1,7 @@
 package de.snowworks.app
 
 import android.app.Application
+import android.util.Log
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.LocalAiProviderManager
@@ -10,20 +11,32 @@ import de.snowworks.ariana.session.SessionRegistry
 class SnowworksApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // No device/session restore after process death.
-        SessionRegistry.clear()
 
-        // Restore only the local loopback core when the user-controlled master gate
-        // was already enabled and Stop-All has not blocked new actions.
-        val gate = ArianaGate(this)
-        if (gate.isMasterEnabled && !gate.isBlocked) {
-            LocalBridgeServer.start(this)
+        // App boot must never crash because an optional subsystem fails.
+        runCatching { SessionRegistry.clear() }
+            .onFailure { Log.e(TAG, "SessionRegistry.clear failed", it) }
+
+        val gate = runCatching { ArianaGate(this) }
+            .onFailure { Log.e(TAG, "ArianaGate init failed", it) }
+            .getOrNull()
+
+        if (gate != null && gate.isMasterEnabled && !gate.isBlocked) {
+            runCatching { LocalBridgeServer.start(this) }
+                .onFailure { Log.e(TAG, "LocalBridgeServer.start failed", it) }
         }
 
-        // Prefer an explicitly enabled on-device model. Fall back to a previously
-        // configured HTTPS provider only when no local model is active.
-        if (!LocalAiProviderManager.activateConfigured(this)) {
-            AiProviderManager.activateConfigured(this)
+        // Provider activation is optional. A broken model/provider must not block UI startup.
+        val localActivated = runCatching { LocalAiProviderManager.activateConfigured(this) }
+            .onFailure { Log.e(TAG, "Local AI provider activation failed", it) }
+            .getOrDefault(false)
+
+        if (!localActivated) {
+            runCatching { AiProviderManager.activateConfigured(this) }
+                .onFailure { Log.e(TAG, "Remote AI provider activation failed", it) }
         }
+    }
+
+    private companion object {
+        const val TAG = "SnowworksApp"
     }
 }

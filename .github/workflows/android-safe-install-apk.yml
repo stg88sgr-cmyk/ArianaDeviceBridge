@@ -1,0 +1,79 @@
+name: Android Reduced Permission APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-safe-install-apk.yml"
+
+jobs:
+  assemble-safe-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Verify reduced-permission source profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest='android/app/src/safeinstall/AndroidManifest.xml'
+          test -f "$manifest"
+          grep -F 'tools:node="remove"' "$manifest"
+          grep -F 'ArianaNotificationListener' "$manifest"
+          grep -F 'ACCESS_FINE_LOCATION' "$manifest"
+          grep -F 'BLUETOOTH_SCAN' "$manifest"
+          grep -F 'create("safeinstall")' android/app/build.gradle.kts
+          grep -F 'applicationIdSuffix = ".safe"' android/app/build.gradle.kts
+
+      - name: Run unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Assemble reduced-permission APK
+        working-directory: android
+        run: gradle :app:assembleSafeinstall --stacktrace
+
+      - name: Verify merged manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          MERGED="$(find android/app/build/intermediates -type f -name AndroidManifest.xml -path '*safeinstall*' | head -n 1)"
+          test -n "$MERGED"
+          ! grep -F 'de.snowworks.ariana.notify.ArianaNotificationListener' "$MERGED"
+          ! grep -F 'android.permission.ACCESS_FINE_LOCATION' "$MERGED"
+          ! grep -F 'android.permission.ACCESS_COARSE_LOCATION' "$MERGED"
+          ! grep -F 'android.permission.BLUETOOTH_CONNECT' "$MERGED"
+          ! grep -F 'android.permission.BLUETOOTH_SCAN' "$MERGED"
+
+      - name: Create SHA-256 report
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/safeinstall -name '*.apk' -type f | head -n 1)"
+          sha256sum "$APK" | tee android/app/build/outputs/apk/safeinstall/SHA256SUMS.txt
+
+      - name: Upload reduced-permission APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: snowworks-ariana-safe-install
+          path: |
+            android/app/build/outputs/apk/safeinstall/*.apk
+            android/app/build/outputs/apk/safeinstall/SHA256SUMS.txt
+          if-no-files-found: error

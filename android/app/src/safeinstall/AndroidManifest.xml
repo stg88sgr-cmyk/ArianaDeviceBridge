@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Safe-install profile: keep the phone core installable without special high-risk listeners. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" tools:node="remove" />
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" tools:node="remove" />
+
+    <application>
+        <!-- Notification-listener access can expose OTP/financial notifications and is intentionally
+             excluded from the safe-install package. It remains available in the full bridge builds. -->
+        <service
+            android:name="de.snowworks.ariana.notify.ArianaNotificationListener"
+            tools:node="remove" />
+    </application>
+</manifest>

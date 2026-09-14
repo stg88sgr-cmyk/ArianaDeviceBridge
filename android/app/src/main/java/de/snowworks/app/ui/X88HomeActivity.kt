@@ -87,23 +87,28 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
+
+        // Build the visible UI before voice/TTS initialization. Some Android voice
+        // services can fail immediately during construction and report an error callback.
+        // The UI therefore exists before any such callback can be rendered.
+        setContentView(buildUi())
+        X88EventJournal.add("home_open")
+
         voice = ArianaVoiceController(this, this)
         if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)) {
             runCatching { AiProviderManager.activateConfigured(this) }
         }
-        setContentView(buildUi())
-        X88EventJournal.add("home_open")
         refreshStatus()
     }
 
     override fun onResume() {
         super.onResume()
-        if (::statusView.isInitialized) refreshStatus()
+        if (::statusView.isInitialized && ::api.isInitialized) refreshStatus()
     }
 
     override fun onDestroy() {
         dialogueExecutor.shutdownNow()
-        voice.shutdown()
+        if (::voice.isInitialized) voice.shutdown()
         super.onDestroy()
     }
 
@@ -256,7 +261,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             showReply("Schalte zuerst den X-88 Gerätezugriff ein.", true)
             return
         }
-        if (!voice.isOnDeviceRecognitionAvailable()) {
+        if (!::voice.isInitialized || !voice.isOnDeviceRecognitionAvailable()) {
             onError("Auf diesem Gerät ist keine Android On-Device-Spracherkennung verfügbar.")
             return
         }
@@ -269,20 +274,22 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onState(message: String) {
         runOnUiThread {
-            statusView.text = "VOICE · $message"
-            avatar.mode = when {
-                message.contains("höre", true) || message.contains("sprich", true) -> X88AvatarView.Mode.LISTENING
-                message.contains("verarbeite", true) -> X88AvatarView.Mode.THINKING
-                else -> avatar.mode
+            if (::statusView.isInitialized) statusView.text = "VOICE · $message"
+            if (::avatar.isInitialized) {
+                avatar.mode = when {
+                    message.contains("höre", true) || message.contains("sprich", true) -> X88AvatarView.Mode.LISTENING
+                    message.contains("verarbeite", true) -> X88AvatarView.Mode.THINKING
+                    else -> avatar.mode
+                }
             }
         }
     }
 
     override fun onTranscript(text: String) {
         runOnUiThread {
-            transcriptView.text = "Du: $text"
-            replyView.text = "Ariana: …"
-            avatar.mode = X88AvatarView.Mode.THINKING
+            if (::transcriptView.isInitialized) transcriptView.text = "Du: $text"
+            if (::replyView.isInitialized) replyView.text = "Ariana: …"
+            if (::avatar.isInitialized) avatar.mode = X88AvatarView.Mode.THINKING
         }
         val intent = X88VoiceIntentRouter.classify(text)
         X88EventJournal.add("voice_intent", intent.name.lowercase())
@@ -296,7 +303,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             X88VoiceIntentRouter.Intent.STOP_ALL -> runOnUiThread {
                 api.stopAll()
                 X88EventJournal.add("stop_all", "voice")
-                avatar.mode = X88AvatarView.Mode.STOPPED
+                if (::avatar.isInitialized) avatar.mode = X88AvatarView.Mode.STOPPED
                 showReply("Alles gestoppt.", false)
                 refreshStatus()
             }
@@ -370,34 +377,38 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onSpeechStarted() {
         runOnUiThread {
-            if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.SPEAKING
+            if (::api.isInitialized && ::avatar.isInitialized && !api.isBlocked()) {
+                avatar.mode = X88AvatarView.Mode.SPEAKING
+            }
             X88EventJournal.add("tts_start")
         }
     }
 
     override fun onSpeechFinished() {
         runOnUiThread {
-            if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
+            if (::api.isInitialized && ::avatar.isInitialized && !api.isBlocked()) {
+                avatar.mode = X88AvatarView.Mode.IDLE
+            }
             X88EventJournal.add("tts_done")
         }
     }
 
     override fun onError(message: String) {
         runOnUiThread {
-            avatar.mode = X88AvatarView.Mode.ATTENTION
-            statusView.text = "VOICE · Fehler"
-            replyView.text = "Ariana: $message"
+            if (::avatar.isInitialized) avatar.mode = X88AvatarView.Mode.ATTENTION
+            if (::statusView.isInitialized) statusView.text = "VOICE · Fehler"
+            if (::replyView.isInitialized) replyView.text = "Ariana: $message"
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
     }
 
     private fun showReply(message: String, speak: Boolean) {
-        replyView.text = "Ariana: $message"
-        if (speak) voice.speak(message)
+        if (::replyView.isInitialized) replyView.text = "Ariana: $message"
+        if (speak && ::voice.isInitialized) voice.speak(message)
     }
 
     private fun refreshStatus() {
-        if (!::statusView.isInitialized) return
+        if (!::statusView.isInitialized || !::api.isInitialized) return
         val connection = api.getConnection()
         val camera = api.getStatus(Feature.CAMERA)
         val microphone = api.getStatus(Feature.MICROPHONE)
