@@ -56,6 +56,16 @@ android {
                 signingConfig = signingConfigs.getByName("arianaStableDebug")
             }
         }
+        create("stable") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".stable"
+            versionNameSuffix = "-stable"
+            buildConfigField("boolean", "BOOTSTRAP", "false")
+            matchingFallbacks += listOf("debug")
+            if (arianaStableDebugSigningAvailable) {
+                signingConfig = signingConfigs.getByName("arianaStableDebug")
+            }
+        }
         create("bootstrap") {
             initWith(getByName("debug"))
             versionNameSuffix = "-bootstrap"

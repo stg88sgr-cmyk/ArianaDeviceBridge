@@ -16,6 +16,10 @@ This branch combines the v9.2 startup-hardened runtime with Character Core v3.
 - non-exported feature activities
 - local-first storage and loopback bridge boundaries
 
+## Canonical install package
+
+The durable phone package is `de.snowworks.app.stable`. It uses the pinned Ariana X-88 certificate and can coexist with earlier debug or sideload packages whose temporary certificates cannot be upgraded safely.
+
 ## Release gate
 
-The debug workflow must run both `:app:testDebugUnitTest` and `:app:assembleDebug`. The resulting APK is not promoted until the workflow succeeds and its signing certificate is reported.
+The debug and stable workflows run unit tests before APK assembly. Stable artifacts are published only with the pinned signing identity; otherwise a verified local-signing input is exported.

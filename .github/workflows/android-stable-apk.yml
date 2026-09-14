@@ -1,0 +1,154 @@
+name: Android Stable APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/**"
+      - ".github/signing/**"
+      - ".github/workflows/android-stable-apk.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - ".github/signing/**"
+      - ".github/workflows/android-stable-apk.yml"
+
+jobs:
+  assemble-stable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Run stable unit tests
+        working-directory: android
+        run: gradle :app:testStableUnitTest --stacktrace
+
+      - name: Prepare stable signing
+        shell: bash
+        env:
+          ARIANA_SIGNING_SEED: ${{ secrets.ARIANA_SIGNING_SEED }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${ARIANA_SIGNING_SEED:-}" ]]; then
+            echo "ARIANA_STABLE_SIGNING=disabled" >> "$GITHUB_ENV"
+            echo "::warning::ARIANA_SIGNING_SEED is not configured. A local-signing input will be exported."
+            exit 0
+          fi
+
+          SEED="$(printf '%s' "$ARIANA_SIGNING_SEED" | tr -d '\r\n')"
+          if [[ ${#SEED} -lt 32 ]]; then
+            echo "::error::ARIANA_SIGNING_SEED must contain at least 32 characters."
+            exit 1
+          fi
+          echo "::add-mask::$SEED"
+
+          python3 -m pip install --quiet --disable-pip-version-check "cryptography==46.0.4"
+          export ARIANA_SIGNING_SEED="$SEED"
+          python3 .github/signing/derive_signing.py \
+            --certificate .github/signing/ariana-sideload-cert.pem \
+            --output "$RUNNER_TEMP/ariana-stable.p12"
+
+          keytool -importkeystore \
+            -srckeystore "$RUNNER_TEMP/ariana-stable.p12" \
+            -srcstoretype PKCS12 \
+            -srcstorepass "$SEED" \
+            -srcalias ariana-sideload \
+            -destkeystore "$RUNNER_TEMP/ariana-stable.jks" \
+            -deststoretype JKS \
+            -deststorepass "$SEED" \
+            -destkeypass "$SEED" \
+            -destalias ariana-sideload \
+            -noprompt
+          chmod 600 "$RUNNER_TEMP/ariana-stable.jks"
+
+          {
+            echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-stable.jks"
+            echo "ARIANA_DEBUG_STORE_PASSWORD=$SEED"
+            echo "ARIANA_DEBUG_KEY_ALIAS=ariana-sideload"
+            echo "ARIANA_DEBUG_KEY_PASSWORD=$SEED"
+            echo "ARIANA_STABLE_SIGNING=enabled"
+          } >> "$GITHUB_ENV"
+
+      - name: Assemble stable APK
+        working-directory: android
+        run: gradle :app:assembleStable --stacktrace
+
+      - name: Verify package, manifest, and signing identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/stable -name '*.apk' -type f | head -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          APKANALYZER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name apkanalyzer | sort -V | tail -n 1)"
+          test -n "$APKANALYZER"
+
+          SIGNING_INFO="$("$APKSIGNER" verify --print-certs "$APK")"
+          printf '%s\n' "$SIGNING_INFO" | tee android/app/build/outputs/apk/stable/signing-certificate.txt
+          echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/stable/signing-certificate.txt
+
+          if [[ "${ARIANA_STABLE_SIGNING:-disabled}" == "enabled" ]]; then
+            EXPECTED="$(openssl x509 -in .github/signing/ariana-sideload-cert.pem -noout -fingerprint -sha256 | cut -d= -f2 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+            ACTUAL="$(printf '%s\n' "$SIGNING_INFO" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:upper:]' '[:lower:]')"
+            if [[ -z "$ACTUAL" || "$ACTUAL" != "$EXPECTED" ]]; then
+              echo "::error::Stable APK was not signed by the pinned Ariana X-88 certificate."
+              exit 1
+            fi
+          fi
+
+          "$APKANALYZER" manifest print "$APK" > android/app/build/outputs/apk/stable/merged-manifest.xml
+          grep -F 'package="de.snowworks.app.stable"' android/app/build/outputs/apk/stable/merged-manifest.xml
+          if grep -Fq 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE' android/app/build/outputs/apk/stable/merged-manifest.xml; then
+            echo "::error::Stable APK still declares notification-listener access."
+            exit 1
+          fi
+
+      - name: Upload stable APK
+        if: env.ARIANA_STABLE_SIGNING == 'enabled'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ariana-x88-stable
+          path: |
+            android/app/build/outputs/apk/stable/*.apk
+            android/app/build/outputs/apk/stable/signing-certificate.txt
+            android/app/build/outputs/apk/stable/merged-manifest.xml
+          if-no-files-found: error
+
+      - name: Stage local signing kit
+        if: env.ARIANA_STABLE_SIGNING != 'enabled'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          APKSIGNER_JAR="$(dirname "$APKSIGNER")/lib/apksigner.jar"
+          test -f "$APKSIGNER_JAR"
+          cp "$APKSIGNER_JAR" android/app/build/outputs/apk/stable/apksigner.jar
+
+      - name: Upload local signing kit
+        if: env.ARIANA_STABLE_SIGNING != 'enabled'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ariana-x88-stable-local-signing-input
+          path: |
+            android/app/build/outputs/apk/stable/*.apk
+            android/app/build/outputs/apk/stable/signing-certificate.txt
+            android/app/build/outputs/apk/stable/merged-manifest.xml
+            android/app/build/outputs/apk/stable/apksigner.jar
+          if-no-files-found: error
