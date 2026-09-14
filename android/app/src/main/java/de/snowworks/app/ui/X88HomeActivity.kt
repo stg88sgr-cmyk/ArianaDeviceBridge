@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.app.BuildConfig
+import de.snowworks.app.widget.X88WidgetProvider
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
@@ -433,6 +434,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         modulesView.text = "MODULES · NOTIFY ${ok(notify.permissionGranted)} (${NotificationStore.listRecent().size}) · FILES ${ok(files.permissionGranted || treeSelected)} · LOC ${ok(location.permissionGranted)} · BT ${ok(bluetooth.permissionGranted)} · PRESENCE ${PresenceSignalController.currentState()}"
         if (api.isBlocked()) avatar.mode = X88AvatarView.Mode.STOPPED
         else if (avatar.mode == X88AvatarView.Mode.STOPPED) avatar.mode = X88AvatarView.Mode.IDLE
+        X88WidgetProvider.updateAll(applicationContext)
     }
 
     private fun row(left: MaterialButton, right: MaterialButton): LinearLayout = LinearLayout(this).apply {
