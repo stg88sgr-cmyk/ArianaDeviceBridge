@@ -1,0 +1,165 @@
+name: Android Stable Safe APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - x88/v9.4-stable-signing
+    paths:
+      - "android/**"
+      - ".github/workflows/android-stable-safe-apk.yml"
+
+jobs:
+  assemble-stable-safe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Require stable signing secrets
+        shell: bash
+        env:
+          ARIANA_DEBUG_KEYSTORE_B64: ${{ secrets.ARIANA_DEBUG_KEYSTORE_B64 }}
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in \
+            ARIANA_DEBUG_KEYSTORE_B64 \
+            ARIANA_DEBUG_STORE_PASSWORD \
+            ARIANA_DEBUG_KEY_ALIAS \
+            ARIANA_DEBUG_KEY_PASSWORD
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::$name is not configured. Stable APK generation is blocked."
+              exit 1
+            fi
+          done
+
+          # Accept either the raw base64 payload or an accidentally copied
+          # "ARIANA_DEBUG_KEYSTORE_B64=<payload>" line, and ignore whitespace.
+          CLEAN_KEYSTORE_B64="$(printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" \
+            | sed -E 's/^[[:space:]]*ARIANA_DEBUG_KEYSTORE_B64[[:space:]]*=[[:space:]]*//' \
+            | tr -d '[:space:]')"
+
+          if ! printf '%s' "$CLEAN_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-stable.jks"; then
+            echo "::error::ARIANA_DEBUG_KEYSTORE_B64 is not valid base64. Paste only the v3 value, or the full ARIANA_DEBUG_KEYSTORE_B64=<value> line."
+            exit 1
+          fi
+          if [[ ! -s "$RUNNER_TEMP/ariana-stable.jks" ]]; then
+            echo "::error::Decoded keystore is empty."
+            exit 1
+          fi
+
+          chmod 600 "$RUNNER_TEMP/ariana-stable.jks"
+          echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-stable.jks" >> "$GITHUB_ENV"
+
+      - name: Validate stable signing secrets
+        shell: bash
+        env:
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          EXPECTED_CERT="0A24B7475ADF232184233E50A2BE368ECF55AF981A3948F3062E12CDC57D30AB"
+
+          if ! keytool -list \
+            -keystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -storepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -alias "$ARIANA_DEBUG_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::Stable keystore opened unsuccessfully. Check ARIANA_DEBUG_STORE_PASSWORD and ARIANA_DEBUG_KEY_ALIAS against the v3 kit."
+            exit 1
+          fi
+
+          rm -f "$RUNNER_TEMP/ariana-signing-check.p12"
+          if ! keytool -importkeystore \
+            -srckeystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -srcstorepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -srcalias "$ARIANA_DEBUG_KEY_ALIAS" \
+            -srckeypass "$ARIANA_DEBUG_KEY_PASSWORD" \
+            -destkeystore "$RUNNER_TEMP/ariana-signing-check.p12" \
+            -deststoretype PKCS12 \
+            -deststorepass 'TemporaryValidationPassword444' \
+            -noprompt >/dev/null 2>&1; then
+            echo "::error::Stable private key could not be unlocked. Check ARIANA_DEBUG_KEY_PASSWORD against the v3 kit."
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/ariana-signing-check.p12"
+
+          ACTUAL_CERT="$(keytool -list -v \
+            -keystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -storepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -alias "$ARIANA_DEBUG_KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::The configured keystore is not the permanent v3 signing identity."
+            exit 1
+          fi
+
+      - name: Run unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Assemble stable safe APK
+        working-directory: android
+        env:
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: gradle :app:assembleSafeinstall --stacktrace
+
+      - name: Verify package and signing certificate
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/safeinstall -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+
+          "$AAPT" dump badging "$APK" | grep -F "package: name='de.snowworks.app.safe'"
+          "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/safeinstall/signing-certificate.txt
+
+          ACTUAL_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' android/app/build/outputs/apk/safeinstall/signing-certificate.txt \
+            | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          EXPECTED_CERT="0A24B7475ADF232184233E50A2BE368ECF55AF981A3948F3062E12CDC57D30AB"
+          if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::Unexpected signing certificate: $ACTUAL_CERT"
+            exit 1
+          fi
+
+      - name: Create SHA-256 report
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/safeinstall -name '*.apk' -type f | head -n 1)"
+          sha256sum "$APK" | tee android/app/build/outputs/apk/safeinstall/SHA256SUMS.txt
+
+      - name: Upload stable safe APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ariana-x88-stable-safe
+          path: |
+            android/app/build/outputs/apk/safeinstall/*.apk
+            android/app/build/outputs/apk/safeinstall/SHA256SUMS.txt
+            android/app/build/outputs/apk/safeinstall/signing-certificate.txt
+          if-no-files-found: error
