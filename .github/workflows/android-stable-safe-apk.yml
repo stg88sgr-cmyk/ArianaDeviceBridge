@@ -70,6 +70,50 @@ jobs:
           chmod 600 "$RUNNER_TEMP/ariana-stable.jks"
           echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-stable.jks" >> "$GITHUB_ENV"
 
+      - name: Validate stable signing secrets
+        shell: bash
+        env:
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          EXPECTED_CERT="0A24B7475ADF232184233E50A2BE368ECF55AF981A3948F3062E12CDC57D30AB"
+
+          if ! keytool -list \
+            -keystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -storepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -alias "$ARIANA_DEBUG_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::Stable keystore opened unsuccessfully. Check ARIANA_DEBUG_STORE_PASSWORD and ARIANA_DEBUG_KEY_ALIAS against the v3 kit."
+            exit 1
+          fi
+
+          rm -f "$RUNNER_TEMP/ariana-signing-check.p12"
+          if ! keytool -importkeystore \
+            -srckeystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -srcstorepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -srcalias "$ARIANA_DEBUG_KEY_ALIAS" \
+            -srckeypass "$ARIANA_DEBUG_KEY_PASSWORD" \
+            -destkeystore "$RUNNER_TEMP/ariana-signing-check.p12" \
+            -deststoretype PKCS12 \
+            -deststorepass 'TemporaryValidationPassword444' \
+            -noprompt >/dev/null 2>&1; then
+            echo "::error::Stable private key could not be unlocked. Check ARIANA_DEBUG_KEY_PASSWORD against the v3 kit."
+            exit 1
+          fi
+          rm -f "$RUNNER_TEMP/ariana-signing-check.p12"
+
+          ACTUAL_CERT="$(keytool -list -v \
+            -keystore "$ARIANA_DEBUG_KEYSTORE_PATH" \
+            -storepass "$ARIANA_DEBUG_STORE_PASSWORD" \
+            -alias "$ARIANA_DEBUG_KEY_ALIAS" \
+            | sed -n 's/^[[:space:]]*SHA256: //p' \
+            | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::The configured keystore is not the permanent v3 signing identity."
+            exit 1
+          fi
+
       - name: Run unit tests
         working-directory: android
         run: gradle :app:testDebugUnitTest --stacktrace
