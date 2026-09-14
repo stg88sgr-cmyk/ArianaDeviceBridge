@@ -52,7 +52,21 @@ jobs:
             fi
           done
 
-          printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-stable.jks"
+          # Accept either the raw base64 payload or an accidentally copied
+          # "ARIANA_DEBUG_KEYSTORE_B64=<payload>" line, and ignore whitespace.
+          CLEAN_KEYSTORE_B64="$(printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" \
+            | sed -E 's/^[[:space:]]*ARIANA_DEBUG_KEYSTORE_B64[[:space:]]*=[[:space:]]*//' \
+            | tr -d '[:space:]')"
+
+          if ! printf '%s' "$CLEAN_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-stable.jks"; then
+            echo "::error::ARIANA_DEBUG_KEYSTORE_B64 is not valid base64. Paste only the v3 value, or the full ARIANA_DEBUG_KEYSTORE_B64=<value> line."
+            exit 1
+          fi
+          if [[ ! -s "$RUNNER_TEMP/ariana-stable.jks" ]]; then
+            echo "::error::Decoded keystore is empty."
+            exit 1
+          fi
+
           chmod 600 "$RUNNER_TEMP/ariana-stable.jks"
           echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-stable.jks" >> "$GITHUB_ENV"
 
@@ -80,7 +94,14 @@ jobs:
 
           "$AAPT" dump badging "$APK" | grep -F "package: name='de.snowworks.app.safe'"
           "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/safeinstall/signing-certificate.txt
-          grep -F 'Signer #1 certificate SHA-256 digest:' android/app/build/outputs/apk/safeinstall/signing-certificate.txt
+
+          ACTUAL_CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' android/app/build/outputs/apk/safeinstall/signing-certificate.txt \
+            | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          EXPECTED_CERT="0A24B7475ADF232184233E50A2BE368ECF55AF981A3948F3062E12CDC57D30AB"
+          if [[ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]]; then
+            echo "::error::Unexpected signing certificate: $ACTUAL_CERT"
+            exit 1
+          fi
 
       - name: Create SHA-256 report
         shell: bash
