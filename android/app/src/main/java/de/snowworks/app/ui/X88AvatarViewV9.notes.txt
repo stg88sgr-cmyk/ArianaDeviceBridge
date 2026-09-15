@@ -1,0 +1,1 @@
+Renderer v9 staging marker: expression brows, mode arcs, eye squint and procedural viseme mouth shapes. This file exists only as a staging marker and will be removed before final branch update.
