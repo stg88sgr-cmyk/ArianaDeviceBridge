@@ -45,6 +45,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var cameraButton: MaterialButton
     private lateinit var microphoneButton: MaterialButton
     private lateinit var screenButton: MaterialButton
+    private lateinit var coreButton: MaterialButton
     private lateinit var statusView: TextView
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
@@ -162,6 +163,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         root.addView(replyView)
         root.addView(modulesView)
         root.addView(spacer(8))
+        coreButton = button("CORE · CHECKING") { recoverCore() }
+        root.addView(coreButton)
         root.addView(button("CHARACTER · PROFILE") {
             startActivity(Intent(this, X88CharacterActivity::class.java))
         })
@@ -204,6 +207,21 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             setBackgroundColor(Color.parseColor("#05070D"))
             addView(root)
         }
+    }
+
+    private fun recoverCore() {
+        if (coreStatusLabel.startsWith("CORE ONLINE")) {
+            showReply("Der lokale Ariana-Core ist bereits online.", false)
+            return
+        }
+        val launch = packageManager.getLaunchIntentForPackage("com.termux")
+        if (launch == null) {
+            showReply("Termux wurde nicht gefunden.", true)
+            return
+        }
+        X88EventJournal.add("core_recover", "open_termux")
+        showReply("Ich öffne Termux. Der Guardian startet dort automatisch.", false)
+        startActivity(launch)
     }
 
     private fun toggleMaster() {
@@ -445,6 +463,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
         statusView.text = "$coreStatusLabel\n$state · ${connection.label} · CAM ${onOff(camera.sessionActive)} · MIC ${onOff(microphone.sessionActive)} · SCREEN ${onOff(screen.sessionActive)}"
         masterButton.text = if (masterOn) "MASTER · ON" else "MASTER · OFF"
+        if (::coreButton.isInitialized) {
+            coreButton.text = if (coreStatusLabel.startsWith("CORE ONLINE")) "CORE · ONLINE" else "CORE · RECOVER"
+        }
         cameraButton.text = if (camera.sessionActive) "CAMERA · ON" else "CAMERA · OFF"
         microphoneButton.text = if (microphone.sessionActive) "MIC · ON" else "MIC · OFF"
         screenButton.text = if (screen.sessionActive) "SCREEN · ON" else "SCREEN · OFF"

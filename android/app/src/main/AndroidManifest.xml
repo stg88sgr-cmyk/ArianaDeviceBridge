@@ -18,6 +18,10 @@
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
 
+    <queries>
+        <package android:name="com.termux" />
+    </queries>
+
     <application
         android:name=".SnowworksApp"
         android:allowBackup="false"
