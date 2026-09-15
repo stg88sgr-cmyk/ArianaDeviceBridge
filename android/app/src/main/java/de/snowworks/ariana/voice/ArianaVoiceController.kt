@@ -36,6 +36,7 @@ class ArianaVoiceController(
 
     private val tts = TextToSpeech(appContext, this)
     private var ttsReady = false
+    @Volatile private var speechActive = false
 
     init {
         recognizer?.setRecognitionListener(this)
@@ -59,6 +60,15 @@ class ArianaVoiceController(
         }
         listener.onState("Ich höre zu …")
         localRecognizer.startListening(intent)
+    }
+
+    fun interruptSpeech(): Boolean {
+        val wasSpeaking = speechActive || tts.isSpeaking
+        if (!wasSpeaking) return false
+        speechActive = false
+        tts.stop()
+        listener.onSpeechFinished()
+        return true
     }
 
     fun speak(text: String) {
@@ -94,17 +104,28 @@ class ArianaVoiceController(
         tts.setOnUtteranceProgressListener(
             object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {
+                    speechActive = true
                     listener.onSpeechStarted()
                 }
 
                 override fun onDone(utteranceId: String?) {
+                    if (!speechActive) return
+                    speechActive = false
                     listener.onSpeechFinished()
                 }
 
                 @Deprecated("Deprecated in Java")
                 override fun onError(utteranceId: String?) {
-                    listener.onSpeechFinished()
+                    val wasActive = speechActive
+                    speechActive = false
+                    if (wasActive) listener.onSpeechFinished()
                     listener.onError("Android-TTS konnte die Ausgabe nicht abschließen.")
+                }
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    if (!speechActive) return
+                    speechActive = false
+                    listener.onSpeechFinished()
                 }
             },
         )

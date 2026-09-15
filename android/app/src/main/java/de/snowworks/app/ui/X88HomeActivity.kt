@@ -421,6 +421,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             onError("Auf diesem Gerät ist keine Android On-Device-Spracherkennung verfügbar.")
             return
         }
+        if (voice.interruptSpeech()) {
+            X88EventJournal.add("tts_interrupt", "talk")
+            setDialogState("DIALOG · HÖRT ZU")
+        }
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
             voice.startListening()
         } else {
