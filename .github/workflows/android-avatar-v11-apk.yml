@@ -1,0 +1,88 @@
+name: ARIANA X-88 V11 3D Avatar APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "x88/v11-3d-avatar"
+    paths:
+      - "android/**"
+      - ".github/workflows/android-avatar-v11-apk.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - ".github/workflows/android-avatar-v11-apk.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-avatar-v11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Fetch interim ARIANA X-88 V2 GLB
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_DIR="android/app/src/main/assets/ariana"
+          MODEL_FILE="$MODEL_DIR/ariana_x88.glb"
+          mkdir -p "$MODEL_DIR"
+          curl -fL --retry 3 --retry-delay 2 \
+            "https://media.kolbo.ai/kolboai-media/rehosted/6a924a5f80e804b183d4e9a8/media-6aa95e5d43f0c4f80c23da9c.glb" \
+            -o "$MODEL_FILE"
+          test -s "$MODEL_FILE"
+          stat --printf='GLB bytes: %s\n' "$MODEL_FILE"
+          sha256sum "$MODEL_FILE" | tee "$MODEL_DIR/ariana_x88.glb.sha256"
+
+      - name: Verify V11 source contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'class X88AvatarHostView' android/app/src/main/java/de/snowworks/app/ui/X88AvatarHostView.kt
+          grep -F 'class X88Avatar3DView' android/app/src/main/java/de/snowworks/app/ui/X88Avatar3DView.kt
+          grep -F 'X88AvatarHostView(this)' android/app/src/main/java/de/snowworks/app/ui/X88HomeActivity.kt
+          grep -F 'filament-utils-android:1.75.1' android/app/build.gradle.kts
+          grep -F 'versionName = "1.8.0"' android/app/build.gradle.kts
+
+      - name: Unit tests and assemble debug APK
+        working-directory: android
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
+
+      - name: Report APK and model hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          sha256sum "$APK" | tee android/app/build/outputs/apk/debug/ariana-x88-v11-apk.sha256
+          cp android/app/src/main/assets/ariana/ariana_x88.glb.sha256 \
+            android/app/build/outputs/apk/debug/ariana-x88-v11-model.sha256
+
+      - name: Upload V11 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ariana-x88-v11-3d-avatar-debug
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/debug/ariana-x88-v11-apk.sha256
+            android/app/build/outputs/apk/debug/ariana-x88-v11-model.sha256
+          if-no-files-found: error
