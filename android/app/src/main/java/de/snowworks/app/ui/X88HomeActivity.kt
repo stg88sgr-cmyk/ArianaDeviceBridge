@@ -52,6 +52,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var microphoneButton: MaterialButton
     private lateinit var screenButton: MaterialButton
     private lateinit var coreButton: MaterialButton
+    private lateinit var followUpButton: MaterialButton
     private lateinit var statusView: TextView
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
@@ -64,6 +65,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     @Volatile private var coreStatusLabel = "CORE · CHECKING"
     @Volatile private var historyLoaded = false
     @Volatile private var dialogStateLabel = "DIALOG · READY"
+    @Volatile private var followUpEnabled = false
 
     private val dialogueExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88HomeDialogue").apply { isDaemon = true }
@@ -108,6 +110,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
         voice = ArianaVoiceController(this, this)
+        followUpEnabled = getSharedPreferences("x88_voice", MODE_PRIVATE).getBoolean("follow_up", false)
         if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
             !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
         ) {
@@ -267,6 +270,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(masterButton)
         root.addView(button("TALK · Push-to-talk") { startPushToTalk() })
+        followUpButton = button(followUpLabel()) { toggleFollowUp() }
+        root.addView(followUpButton)
         textInput = EditText(this).apply {
             hint = "Nachricht an Ariana …"
             setTextColor(Color.parseColor("#EAF7FF"))
@@ -410,6 +415,34 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             is ArianaResult.Err -> showReply(result.error.message, true)
         }
         refreshStatus()
+    }
+
+
+    private fun followUpLabel(): String = if (followUpEnabled) "FOLLOW-UP · ON" else "FOLLOW-UP · OFF"
+
+    private fun toggleFollowUp() {
+        followUpEnabled = !followUpEnabled
+        getSharedPreferences("x88_voice", MODE_PRIVATE)
+            .edit()
+            .putBoolean("follow_up", followUpEnabled)
+            .apply()
+        if (::followUpButton.isInitialized) followUpButton.text = followUpLabel()
+        X88EventJournal.add("follow_up", if (followUpEnabled) "on" else "off")
+        showReply(
+            if (followUpEnabled) "Follow-up ist aktiv. Nach meiner gesprochenen Antwort höre ich einmal wieder zu."
+            else "Follow-up ist ausgeschaltet.",
+            false,
+        )
+    }
+
+    private fun startFollowUpListening() {
+        if (!followUpEnabled || isFinishing || isDestroyed) return
+        if (!api.isMasterEnabled() || api.isBlocked()) return
+        if (!voice.isOnDeviceRecognitionAvailable() || voice.isListening()) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        setDialogState("DIALOG · HÖRT ZU")
+        X88EventJournal.add("follow_up_listen")
+        voice.startListening()
     }
 
     private fun startPushToTalk() {
@@ -572,6 +605,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
             setDialogState("DIALOG · READY")
             X88EventJournal.add("tts_done")
+            if (followUpEnabled) {
+                dialogStateView.postDelayed({ startFollowUpListening() }, 450L)
+            }
         }
     }
 

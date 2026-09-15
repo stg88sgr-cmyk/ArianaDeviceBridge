@@ -37,14 +37,17 @@ class ArianaVoiceController(
     private val tts = TextToSpeech(appContext, this)
     private var ttsReady = false
     @Volatile private var speechActive = false
+    @Volatile private var listeningActive = false
 
     init {
         recognizer?.setRecognitionListener(this)
     }
 
     fun isOnDeviceRecognitionAvailable(): Boolean = recognizer != null
+    fun isListening(): Boolean = listeningActive
 
     fun startListening() {
+        if (listeningActive) return
         val localRecognizer = recognizer
         if (localRecognizer == null) {
             listener.onError("Lokale Spracherkennung ist auf diesem Gerät nicht verfügbar.")
@@ -59,7 +62,12 @@ class ArianaVoiceController(
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         listener.onState("Ich höre zu …")
-        localRecognizer.startListening(intent)
+        listeningActive = true
+        runCatching { localRecognizer.startListening(intent) }
+            .onFailure {
+                listeningActive = false
+                listener.onError("Spracherkennung konnte nicht gestartet werden.")
+            }
     }
 
     fun interruptSpeech(): Boolean {
@@ -82,6 +90,7 @@ class ArianaVoiceController(
     }
 
     fun shutdown() {
+        listeningActive = false
         recognizer?.cancel()
         recognizer?.destroy()
         tts.stop()
@@ -147,6 +156,7 @@ class ArianaVoiceController(
     }
 
     override fun onError(error: Int) {
+        listeningActive = false
         val message = when (error) {
             SpeechRecognizer.ERROR_AUDIO -> "Audiofehler bei der Spracherkennung."
             SpeechRecognizer.ERROR_CLIENT -> "Spracherkennung wurde abgebrochen."
@@ -163,6 +173,7 @@ class ArianaVoiceController(
     }
 
     override fun onResults(results: Bundle?) {
+        listeningActive = false
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             ?.firstOrNull()
