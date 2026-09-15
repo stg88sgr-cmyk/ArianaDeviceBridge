@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 36
-        versionName = "1.13.0-rc1"
+        versionCode = 37
+        versionName = "1.14.0-rc1"
     }
 
     signingConfigs {
