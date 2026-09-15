@@ -9,5 +9,6 @@ internal object VoiceRecoveryPolicy {
 
     fun shouldRebuildRecognizer(error: Int): Boolean =
         error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ||
-            error == SpeechRecognizer.ERROR_CLIENT
+            error == SpeechRecognizer.ERROR_CLIENT ||
+            error == SpeechRecognizer.ERROR_SERVER_DISCONNECTED
 }

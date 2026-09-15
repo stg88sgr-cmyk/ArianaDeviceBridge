@@ -264,6 +264,7 @@ class ArianaVoiceController(
             SpeechRecognizer.ERROR_NO_MATCH -> "Ich habe nichts eindeutig verstanden."
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Ich habe nichts eindeutig verstanden. Spracherkennung ist noch beschäftigt."
             SpeechRecognizer.ERROR_SERVER -> "Lokaler Spracherkennungsdienst meldet einen Fehler."
+            SpeechRecognizer.ERROR_SERVER_DISCONNECTED -> "Lokaler Spracherkennungsdienst wurde getrennt."
             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Keine Sprache erkannt."
             else -> "Spracherkennung fehlgeschlagen (Code $error)."
         }

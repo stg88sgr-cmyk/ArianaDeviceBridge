@@ -14,6 +14,11 @@ class ConversationVoicePolicyTest {
     }
 
     @Test
+    fun disconnectedRecognizerIsRebuiltOnce() {
+        assertTrue(VoiceRecoveryPolicy.shouldRebuildRecognizer(11))
+    }
+
+    @Test
     fun hardFailuresDoNotMasqueradeAsRecoverable() {
         val messages = listOf(
             "Mikrofon-Berechtigung fehlt.",
