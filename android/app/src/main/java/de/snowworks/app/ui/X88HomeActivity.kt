@@ -663,6 +663,18 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onError(message: String) {
         runOnUiThread {
+            val recoverableConversationError = conversationActive && (
+                message.startsWith("Keine Sprache erkannt") ||
+                    message.startsWith("Ich habe nichts eindeutig verstanden")
+                )
+            if (recoverableConversationError) {
+                X88EventJournal.add("conversation_rearm", "idle")
+                statusView.text = "VOICE · Warte auf dich …"
+                setDialogState("DIALOG · HÖRT ZU")
+                if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.LISTENING
+                dialogStateView.postDelayed({ startConversationListening() }, 350L)
+                return@runOnUiThread
+            }
             if (conversationActive) stopConversation("voice_error")
             avatar.mode = X88AvatarView.Mode.ATTENTION
             statusView.text = "VOICE · Fehler"
