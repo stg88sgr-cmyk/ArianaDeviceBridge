@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.app.BuildConfig
+import de.snowworks.app.widget.PresenceWidgetStateStore
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
@@ -216,6 +217,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             } else {
                 "CORE OFFLINE"
             }
+            PresenceWidgetStateStore.publishCore(applicationContext, coreStatusLabel)
             runOnUiThread {
                 if (!isFinishing && !isDestroyed && ::statusView.isInitialized) {
                     refreshStatus()
@@ -688,6 +690,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun setDialogState(value: String) {
         dialogStateLabel = value
+        PresenceWidgetStateStore.publishDialog(applicationContext, value)
         if (::dialogStateView.isInitialized) dialogStateView.text = value
     }
 
