@@ -15,7 +15,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * ARIANA X-88 procedural renderer v7.
+ * ARIANA X-88 procedural renderer v8.
  *
  * Design language:
  * - dark biomechanical shell
@@ -23,6 +23,7 @@ import kotlin.math.sin
  * - cyan eyes / sensor lines
  * - magenta reactive speech accents
  * - gold face/core geometry
+ * - subtle presence motion: gaze, head drift, breathing and mode energy
  *
  * This remains a light Android View with no added rendering dependency.
  */
@@ -89,7 +90,26 @@ class X88AvatarView @JvmOverloads constructor(
         }
 
         val slow = sin(t * 2f * PI.toFloat() / 2.6f)
+        val breath = sin(t * 2f * PI.toFloat() / 4.8f)
         val pulse = 1f + 0.022f * slow
+        val energyHz = when (mode) {
+            Mode.IDLE -> 0.42f
+            Mode.LISTENING -> 1.15f
+            Mode.THINKING -> 0.78f
+            Mode.SPEAKING -> 2.1f
+            Mode.ATTENTION -> 1.45f
+            Mode.STOPPED -> 0.18f
+        }
+        val energyAmp = when (mode) {
+            Mode.SPEAKING -> 0.10f
+            Mode.LISTENING -> 0.075f
+            Mode.THINKING -> 0.065f
+            Mode.ATTENTION -> 0.08f
+            Mode.IDLE -> 0.045f
+            Mode.STOPPED -> 0.02f
+        }
+        val energy = (sin(t * 2f * PI.toFloat() * energyHz) + 1f) / 2f
+        val corePulse = 1f + energyAmp * energy
         val outerRadius = w.coerceAtMost(h) * 0.435f * pulse
 
         paint.style = Paint.Style.FILL
@@ -120,6 +140,31 @@ class X88AvatarView @JvmOverloads constructor(
         paint.strokeWidth = dp(0.8f)
         paint.color = withAlpha(cyan, 70)
         canvas.drawCircle(cx, cy, outerRadius * 0.83f, paint)
+
+        val tiltBase = when (mode) {
+            Mode.LISTENING -> 1.0f
+            Mode.THINKING -> 0.45f
+            Mode.SPEAKING -> 0.75f
+            Mode.ATTENTION -> 0.25f
+            Mode.STOPPED -> 0f
+            Mode.IDLE -> 0.65f
+        }
+        val headTilt = tiltBase * sin(t * 0.55f)
+        val headBob = if (mode == Mode.STOPPED) 0f else h * 0.0032f * sin(t * 0.82f)
+        val gazeScale = when (mode) {
+            Mode.LISTENING -> 0.30f
+            Mode.THINKING -> 1.0f
+            Mode.SPEAKING -> 0.55f
+            Mode.ATTENTION -> 0.15f
+            Mode.STOPPED -> 0f
+            Mode.IDLE -> 0.70f
+        }
+        val gazeX = w * 0.010f * gazeScale * sin(t * 0.67f)
+        val gazeY = h * 0.0045f * gazeScale * sin(t * 0.43f + 1.1f)
+
+        canvas.save()
+        canvas.translate(0f, headBob)
+        canvas.rotate(headTilt, cx, h * 0.46f)
 
         paint.strokeWidth = dp(1.8f)
         paint.color = withAlpha(gold, 220)
@@ -221,8 +266,8 @@ class X88AvatarView @JvmOverloads constructor(
             1f
         }
 
-        drawEye(canvas, cx - w * 0.085f, h * 0.405f, blink)
-        drawEye(canvas, cx + w * 0.085f, h * 0.405f, blink)
+        drawEye(canvas, cx - w * 0.085f, h * 0.405f, blink, gazeX, gazeY)
+        drawEye(canvas, cx + w * 0.085f, h * 0.405f, blink, gazeX, gazeY)
 
         if (mode == Mode.LISTENING) {
             val scan = (sin(t * 3.2f) + 1f) / 2f
@@ -238,7 +283,8 @@ class X88AvatarView @JvmOverloads constructor(
         canvas.drawLine(cx, h * 0.43f, cx, h * 0.535f, paint)
 
         val mouthAmp = if (mode == Mode.SPEAKING) {
-            0.006f + 0.011f * ((sin(t * 18f) + 1f) / 2f)
+            val voice = ((sin(t * 17f) + 0.55f * sin(t * 24f) + 1.55f) / 3.1f).coerceIn(0f, 1f)
+            0.006f + 0.014f * voice
         } else {
             0.003f
         }
@@ -251,6 +297,8 @@ class X88AvatarView @JvmOverloads constructor(
         paint.style = Paint.Style.FILL
         paint.color = if (mode == Mode.SPEAKING) magenta else withAlpha(gold, 180)
         canvas.drawRoundRect(mouth, dp(3f), dp(3f), paint)
+
+        canvas.restore()
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = w * 0.052f
@@ -265,10 +313,11 @@ class X88AvatarView @JvmOverloads constructor(
         paint.color = withAlpha(magenta, 130)
         canvas.drawLine(cx + w * 0.035f, h * 0.67f, cx + w * 0.055f, h * 0.785f, paint)
 
+        val shoulderLift = h * 0.004f * breath
         paint.strokeWidth = w * 0.080f
         paint.color = withAlpha(white, 225)
-        canvas.drawLine(cx - w * 0.11f, h * 0.79f, cx - w * 0.34f, h * 0.88f, paint)
-        canvas.drawLine(cx + w * 0.11f, h * 0.79f, cx + w * 0.34f, h * 0.88f, paint)
+        canvas.drawLine(cx - w * 0.11f, h * 0.79f + shoulderLift, cx - w * 0.34f, h * 0.88f + shoulderLift, paint)
+        canvas.drawLine(cx + w * 0.11f, h * 0.79f + shoulderLift, cx + w * 0.34f, h * 0.88f + shoulderLift, paint)
 
         paint.strokeWidth = dp(2.0f)
         paint.color = withAlpha(steel, 230)
@@ -276,16 +325,16 @@ class X88AvatarView @JvmOverloads constructor(
             val d = i * w * 0.06f
             canvas.drawLine(
                 cx - w * 0.17f - d,
-                h * 0.815f + d * 0.22f,
+                h * 0.815f + d * 0.22f + shoulderLift,
                 cx - w * 0.15f - d,
-                h * 0.875f + d * 0.22f,
+                h * 0.875f + d * 0.22f + shoulderLift,
                 paint,
             )
             canvas.drawLine(
                 cx + w * 0.17f + d,
-                h * 0.815f + d * 0.22f,
+                h * 0.815f + d * 0.22f + shoulderLift,
                 cx + w * 0.15f + d,
-                h * 0.875f + d * 0.22f,
+                h * 0.875f + d * 0.22f + shoulderLift,
                 paint,
             )
         }
@@ -304,18 +353,36 @@ class X88AvatarView @JvmOverloads constructor(
 
         paint.style = Paint.Style.FILL
         paint.color = withAlpha(modeColor, 34)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.070f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.070f * corePulse, paint)
         paint.color = withAlpha(cyan, 36)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.050f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.050f * corePulse, paint)
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(1.6f)
         paint.color = if (mode == Mode.STOPPED) red else gold
-        canvas.drawCircle(cx, h * 0.83f, w * 0.029f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.029f * corePulse, paint)
 
         paint.strokeWidth = dp(0.8f)
         paint.color = withAlpha(magenta, 130)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.020f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.020f * corePulse, paint)
+
+        if (mode == Mode.THINKING) {
+            paint.style = Paint.Style.FILL
+            for (i in 0 until 3) {
+                val a = t * 1.45f + i * (2f * PI.toFloat() / 3f)
+                paint.color = when (i) {
+                    0 -> withAlpha(cyan, 210)
+                    1 -> withAlpha(gold, 210)
+                    else -> withAlpha(magenta, 190)
+                }
+                canvas.drawCircle(
+                    cx + cos(a) * w * 0.052f,
+                    h * 0.83f + sin(a) * w * 0.052f,
+                    w * 0.0065f,
+                    paint,
+                )
+            }
+        }
 
         paint.style = Paint.Style.FILL
         paint.textAlign = Paint.Align.CENTER
@@ -326,7 +393,14 @@ class X88AvatarView @JvmOverloads constructor(
         if (isAttachedToWindow) postInvalidateOnAnimation()
     }
 
-    private fun drawEye(canvas: Canvas, centerX: Float, centerY: Float, blink: Float) {
+    private fun drawEye(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        blink: Float,
+        gazeX: Float,
+        gazeY: Float,
+    ) {
         val eyeW = width * 0.055f
         val eyeH = height * 0.013f * blink
 
@@ -354,7 +428,12 @@ class X88AvatarView @JvmOverloads constructor(
         )
 
         paint.color = withAlpha(white, 220)
-        canvas.drawCircle(centerX, centerY, width * 0.008f * blink, paint)
+        canvas.drawCircle(
+            centerX + gazeX,
+            centerY + gazeY,
+            width * 0.008f * blink,
+            paint,
+        )
     }
 
     private fun modeLabel(mode: Mode): String = when (mode) {
