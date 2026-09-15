@@ -3,7 +3,7 @@
     android:description="@string/widget_description"
     android:initialLayout="@layout/ariana_presence_widget"
     android:minWidth="240dp"
-    android:minHeight="110dp"
+    android:minHeight="132dp"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

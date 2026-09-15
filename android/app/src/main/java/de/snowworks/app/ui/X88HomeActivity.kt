@@ -22,6 +22,9 @@ import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.app.BuildConfig
 import de.snowworks.app.widget.PresenceWidgetStateStore
+import de.snowworks.app.widget.ArianaWakewordService
+import de.snowworks.app.widget.WakewordSignalBus
+import de.snowworks.app.widget.WakewordStateStore
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.ArianaResult
 import de.snowworks.ariana.Feature
@@ -58,6 +61,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var screenButton: MaterialButton
     private lateinit var coreButton: MaterialButton
     private lateinit var conversationButton: MaterialButton
+    private lateinit var wakewordButton: MaterialButton
     private lateinit var statusView: TextView
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
@@ -97,6 +101,16 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             else onError("Mikrofon-Berechtigung wurde nicht erteilt.")
         }
 
+    private val wakewordPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) enableWakewordNow()
+            else {
+                WakewordStateStore.setEnabled(this, false)
+                refreshWakewordButton()
+                showReply("Wakeword braucht Mikrofon-Berechtigung.", false)
+            }
+        }
+
     private val screenProjectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val data = result.data
@@ -108,6 +122,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             } else {
                 showReply("Bildschirmübertragung wurde nicht gestartet.", false)
                 refreshStatus()
+                resumeWakewordIfIdle()
             }
         }
 
@@ -146,6 +161,11 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onResume() {
         super.onResume()
+        WakewordSignalBus.listener = {
+            runOnUiThread {
+                if (!conversationActive && !isFinishing && !isDestroyed) startConversation()
+            }
+        }
         if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
             !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
         ) {
@@ -153,9 +173,21 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
         if (::statusView.isInitialized) refreshStatus()
         if (!historyLoaded) loadLastConversation()
+        if (WakewordStateStore.isEnabled(this) && !conversationActive &&
+            api.isMasterEnabled() && !api.isBlocked() &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ) {
+            ArianaWakewordService.start(this)
+        }
+    }
+
+    override fun onPause() {
+        WakewordSignalBus.listener = null
+        super.onPause()
     }
 
     override fun onDestroy() {
+        WakewordSignalBus.listener = null
         dialogueExecutor.shutdownNow()
         healthExecutor.shutdownNow()
         voice.shutdown()
@@ -294,6 +326,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         root.addView(button("TALK · Push-to-talk") { startPushToTalk() })
         conversationButton = button(conversationLabel()) { toggleConversation() }
         root.addView(conversationButton)
+        wakewordButton = button(wakewordLabel()) { toggleWakeword() }
+        root.addView(wakewordButton)
         textInput = EditText(this).apply {
             hint = "Nachricht an Ariana …"
             setTextColor(Color.parseColor("#EAF7FF"))
@@ -327,6 +361,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             startActivity(Intent(this, X88AuditActivity::class.java))
         })
         root.addView(button("STOP ALL") {
+            disableWakeword("stop_all")
             stopConversation("stop_all")
             api.stopAll()
             X88EventJournal.add("stop_all", "button")
@@ -362,6 +397,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun toggleMaster() {
         if (api.isMasterEnabled() && !api.isBlocked()) {
+            disableWakeword("master_off")
             api.setMasterEnabled(false)
             X88EventJournal.add("master_off", "button")
             stopConversation("master_off")
@@ -372,7 +408,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         AlertDialog.Builder(this)
             .setTitle("ARIANA X-88 Gerätezugriff einschalten?")
             .setMessage("Der lokale Master-Schalter wird aktiviert. Android-Berechtigungen werden dadurch nicht automatisch erteilt.")
-            .setNegativeButton("Abbrechen", null)
+            .setNegativeButton("Abbrechen") { _, _ -> resumeWakewordIfIdle() }
+            .setOnCancelListener { resumeWakewordIfIdle() }
             .setPositiveButton("Einschalten") { _, _ ->
                 api.setMasterEnabled(true)
                 X88EventJournal.add("master_on", "confirmed")
@@ -402,7 +439,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         AlertDialog.Builder(this)
             .setTitle("${feature.title} starten?")
             .setMessage(feature.purpose)
-            .setNegativeButton("Abbrechen", null)
+            .setNegativeButton("Abbrechen") { _, _ -> resumeWakewordIfIdle() }
+            .setOnCancelListener { resumeWakewordIfIdle() }
             .setPositiveButton("Starten") { _, _ ->
                 if (feature == Feature.SCREEN) screenProjectionLauncher.launch(api.createScreenCaptureIntent())
                 else ensurePermissionsThenStart(feature)
@@ -439,8 +477,59 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             is ArianaResult.Err -> showReply(result.error.message, true)
         }
         refreshStatus()
+        resumeWakewordIfIdle()
     }
 
+
+    private fun wakewordLabel(): String =
+        if (WakewordStateStore.isEnabled(this)) "WAKEWORD · ON" else "WAKEWORD · OFF"
+
+    private fun refreshWakewordButton() {
+        if (::wakewordButton.isInitialized) wakewordButton.text = wakewordLabel()
+    }
+
+    private fun toggleWakeword() {
+        if (WakewordStateStore.isEnabled(this)) {
+            disableWakeword("button")
+            showReply("Wakeword ausgeschaltet.", false)
+            return
+        }
+        if (!api.isMasterEnabled() || api.isBlocked()) {
+            showReply("Schalte zuerst den X-88 Gerätezugriff ein.", true)
+            return
+        }
+        if (!voice.isOnDeviceRecognitionAvailable()) {
+            showReply("Lokale On-Device-Spracherkennung ist nicht verfügbar.", true)
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            enableWakewordNow()
+        } else {
+            wakewordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun enableWakewordNow() {
+        WakewordStateStore.setEnabled(this, true)
+        ArianaWakewordService.start(this)
+        refreshWakewordButton()
+        X88EventJournal.add("wakeword", "on")
+        showReply("Wakeword aktiv: Ariana, rede mit mir.", false)
+    }
+
+    private fun disableWakeword(source: String) {
+        if (!WakewordStateStore.isEnabled(this)) return
+        WakewordStateStore.setEnabled(this, false)
+        ArianaWakewordService.stop(this)
+        refreshWakewordButton()
+        X88EventJournal.add("wakeword", "off:$source")
+    }
+
+    private fun resumeWakewordIfIdle() {
+        if (!conversationActive && WakewordStateStore.isEnabled(this) &&
+            api.isMasterEnabled() && !api.isBlocked()
+        ) ArianaWakewordService.resume(this)
+    }
 
     private fun conversationLabel(): String =
         if (conversationActive) "CONVERSATION · STOP" else "CONVERSATION · START"
@@ -459,6 +548,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             onError("Auf diesem Gerät ist keine Android On-Device-Spracherkennung verfügbar.")
             return
         }
+        ArianaWakewordService.pause(this)
         conversationActive = true
         if (::conversationButton.isInitialized) conversationButton.text = conversationLabel()
         X88EventJournal.add("conversation", "start")
@@ -478,6 +568,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         setDialogState("DIALOG · READY")
         if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
         if (wasActive) X88EventJournal.add("conversation", "stop:$source")
+        resumeWakewordIfIdle()
     }
 
     private fun startConversationListening() {
@@ -518,6 +609,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             onError("Auf diesem Gerät ist keine Android On-Device-Spracherkennung verfügbar.")
             return
         }
+        ArianaWakewordService.pause(this)
         if (voice.interruptSpeech()) {
             X88EventJournal.add("tts_interrupt", "talk")
             setDialogState("DIALOG · HÖRT ZU")
@@ -556,6 +648,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             X88VoiceIntentRouter.Intent.SCREEN_ON -> runOnUiThread { requestStartFeature(Feature.SCREEN) }
             X88VoiceIntentRouter.Intent.SCREEN_OFF -> runOnUiThread { stopFeature(Feature.SCREEN) }
             X88VoiceIntentRouter.Intent.STOP_ALL -> runOnUiThread {
+                disableWakeword("stop_all_voice")
                 stopConversation("stop_all")
                 api.stopAll()
                 X88EventJournal.add("stop_all", "voice")
@@ -565,6 +658,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
             X88VoiceIntentRouter.Intent.MASTER_ON -> runOnUiThread { toggleMaster() }
             X88VoiceIntentRouter.Intent.MASTER_OFF -> runOnUiThread {
+                disableWakeword("master_off_voice")
                 stopConversation("master_off")
                 api.setMasterEnabled(false)
                 X88EventJournal.add("master_off", "voice")
@@ -607,7 +701,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         AlertDialog.Builder(this)
             .setTitle("Android-Einstellungen öffnen?")
             .setMessage("X-88 schlägt open_settings vor. Erst dein Klick führt die Aktion aus.")
-            .setNegativeButton("Abbrechen") { _, _ -> ActionApprovalStore.deny(proposalId) }
+            .setNegativeButton("Abbrechen") { _, _ ->
+                ActionApprovalStore.deny(proposalId)
+                resumeWakewordIfIdle()
+            }
             .setPositiveButton("Öffnen") { _, _ ->
                 val grant = ActionApprovalStore.approve(proposalId)
                 if (grant == null) {
@@ -620,7 +717,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                     showReply("Android-Einstellungen geöffnet.", false)
                 } else showReply("Einstellungen konnten nicht geöffnet werden.", true)
             }
-            .setOnCancelListener { ActionApprovalStore.deny(proposalId) }
+            .setOnCancelListener {
+                ActionApprovalStore.deny(proposalId)
+                resumeWakewordIfIdle()
+            }
             .show()
     }
 
@@ -684,6 +784,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             X88EventJournal.add("tts_done")
             if (conversationActive) {
                 dialogStateView.postDelayed({ startConversationListening() }, 900L)
+            } else {
+                dialogStateView.postDelayed({ resumeWakewordIfIdle() }, 450L)
             }
         }
     }
@@ -701,6 +803,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 return@runOnUiThread
             }
             if (conversationActive) stopConversation("voice_error")
+            else resumeWakewordIfIdle()
             avatar.mode = X88AvatarView.Mode.ATTENTION
             statusView.text = "VOICE · Fehler"
             replyView.text = "Ariana: $message"
@@ -733,6 +836,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
         statusView.text = "$coreStatusLabel\n$state · ${connection.label} · CAM ${onOff(camera.sessionActive)} · MIC ${onOff(microphone.sessionActive)} · SCREEN ${onOff(screen.sessionActive)}"
         masterButton.text = if (masterOn) "MASTER · ON" else "MASTER · OFF"
+        refreshWakewordButton()
         if (::coreButton.isInitialized) {
             coreButton.text = if (coreStatusLabel.startsWith("CORE ONLINE")) "CORE · ONLINE" else "CORE · RECOVER"
         }

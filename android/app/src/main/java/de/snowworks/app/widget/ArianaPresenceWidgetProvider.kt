@@ -27,6 +27,7 @@ class ArianaPresenceWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.ariana_presence_widget)
             views.setTextViewText(R.id.widget_core_status, state.core)
             views.setTextViewText(R.id.widget_dialog_status, state.dialog)
+            views.setTextViewText(R.id.widget_wakeword_status, state.wakeword)
             val launchIntent = Intent(context, X88HomeActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
