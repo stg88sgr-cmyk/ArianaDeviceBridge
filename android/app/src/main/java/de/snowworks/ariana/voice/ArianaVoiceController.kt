@@ -38,6 +38,7 @@ class ArianaVoiceController(
     private var ttsReady = false
     @Volatile private var speechActive = false
     @Volatile private var listeningActive = false
+    @Volatile private var suppressCancelError = false
 
     init {
         recognizer?.setRecognitionListener(this)
@@ -76,6 +77,14 @@ class ArianaVoiceController(
         speechActive = false
         tts.stop()
         listener.onSpeechFinished()
+        return true
+    }
+
+    fun cancelListening(): Boolean {
+        if (!listeningActive) return false
+        listeningActive = false
+        suppressCancelError = true
+        recognizer?.cancel()
         return true
     }
 
@@ -157,6 +166,11 @@ class ArianaVoiceController(
 
     override fun onError(error: Int) {
         listeningActive = false
+        if (suppressCancelError && error == SpeechRecognizer.ERROR_CLIENT) {
+            suppressCancelError = false
+            return
+        }
+        suppressCancelError = false
         val message = when (error) {
             SpeechRecognizer.ERROR_AUDIO -> "Audiofehler bei der Spracherkennung."
             SpeechRecognizer.ERROR_CLIENT -> "Spracherkennung wurde abgebrochen."

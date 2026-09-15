@@ -52,7 +52,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var microphoneButton: MaterialButton
     private lateinit var screenButton: MaterialButton
     private lateinit var coreButton: MaterialButton
-    private lateinit var followUpButton: MaterialButton
+    private lateinit var conversationButton: MaterialButton
     private lateinit var statusView: TextView
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
@@ -65,7 +65,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     @Volatile private var coreStatusLabel = "CORE · CHECKING"
     @Volatile private var historyLoaded = false
     @Volatile private var dialogStateLabel = "DIALOG · READY"
-    @Volatile private var followUpEnabled = false
+    @Volatile private var conversationActive = false
 
     private val dialogueExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88HomeDialogue").apply { isDaemon = true }
@@ -110,7 +110,6 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
         voice = ArianaVoiceController(this, this)
-        followUpEnabled = getSharedPreferences("x88_voice", MODE_PRIVATE).getBoolean("follow_up", false)
         if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
             !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
         ) {
@@ -270,8 +269,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(masterButton)
         root.addView(button("TALK · Push-to-talk") { startPushToTalk() })
-        followUpButton = button(followUpLabel()) { toggleFollowUp() }
-        root.addView(followUpButton)
+        conversationButton = button(conversationLabel()) { toggleConversation() }
+        root.addView(conversationButton)
         textInput = EditText(this).apply {
             hint = "Nachricht an Ariana …"
             setTextColor(Color.parseColor("#EAF7FF"))
@@ -305,6 +304,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             startActivity(Intent(this, X88AuditActivity::class.java))
         })
         root.addView(button("STOP ALL") {
+            stopConversation("stop_all")
             api.stopAll()
             X88EventJournal.add("stop_all", "button")
             avatar.mode = X88AvatarView.Mode.STOPPED
@@ -314,7 +314,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             setBackgroundColor(Color.parseColor("#341018"))
             setTextColor(Color.parseColor("#FF8CA7"))
         })
-        root.addView(label("Voice: Kamera an/aus · Mikrofon an/aus · Bildschirm teilen/stoppen · Gerätestatus · Alles stoppen", 11f, "#788D9C"))
+        root.addView(label("Voice: Kamera an/aus · Mikrofon an/aus · Bildschirm teilen/stoppen · Gerätestatus · Gespräch beenden · Alles stoppen", 11f, "#788D9C"))
 
         return ScrollView(this).apply {
             setBackgroundColor(Color.parseColor("#05070D"))
@@ -341,6 +341,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         if (api.isMasterEnabled() && !api.isBlocked()) {
             api.setMasterEnabled(false)
             X88EventJournal.add("master_off", "button")
+            stopConversation("master_off")
             showReply("Gerätezugriff ausgeschaltet.", false)
             refreshStatus()
             return
@@ -418,30 +419,57 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     }
 
 
-    private fun followUpLabel(): String = if (followUpEnabled) "FOLLOW-UP · ON" else "FOLLOW-UP · OFF"
+    private fun conversationLabel(): String =
+        if (conversationActive) "CONVERSATION · STOP" else "CONVERSATION · START"
 
-    private fun toggleFollowUp() {
-        followUpEnabled = !followUpEnabled
-        getSharedPreferences("x88_voice", MODE_PRIVATE)
-            .edit()
-            .putBoolean("follow_up", followUpEnabled)
-            .apply()
-        if (::followUpButton.isInitialized) followUpButton.text = followUpLabel()
-        X88EventJournal.add("follow_up", if (followUpEnabled) "on" else "off")
-        showReply(
-            if (followUpEnabled) "Follow-up ist aktiv. Nach meiner gesprochenen Antwort höre ich einmal wieder zu."
-            else "Follow-up ist ausgeschaltet.",
-            false,
-        )
+    private fun toggleConversation() {
+        if (conversationActive) stopConversation("button")
+        else startConversation()
     }
 
-    private fun startFollowUpListening() {
-        if (!followUpEnabled || isFinishing || isDestroyed) return
-        if (!api.isMasterEnabled() || api.isBlocked()) return
+    private fun startConversation() {
+        if (!api.isMasterEnabled() || api.isBlocked()) {
+            showReply("Schalte zuerst den X-88 Gerätezugriff ein.", true)
+            return
+        }
+        if (!voice.isOnDeviceRecognitionAvailable()) {
+            onError("Auf diesem Gerät ist keine Android On-Device-Spracherkennung verfügbar.")
+            return
+        }
+        conversationActive = true
+        if (::conversationButton.isInitialized) conversationButton.text = conversationLabel()
+        X88EventJournal.add("conversation", "start")
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            startConversationListening()
+        } else {
+            pushToTalkPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun stopConversation(source: String) {
+        val wasActive = conversationActive
+        conversationActive = false
+        voice.interruptSpeech()
+        voice.cancelListening()
+        if (::conversationButton.isInitialized) conversationButton.text = conversationLabel()
+        setDialogState("DIALOG · READY")
+        if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
+        if (wasActive) X88EventJournal.add("conversation", "stop:$source")
+    }
+
+    private fun startConversationListening() {
+        if (!conversationActive || isFinishing || isDestroyed) return
+        if (!api.isMasterEnabled() || api.isBlocked()) {
+            stopConversation("master")
+            return
+        }
         if (!voice.isOnDeviceRecognitionAvailable() || voice.isListening()) return
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            stopConversation("permission")
+            return
+        }
         setDialogState("DIALOG · HÖRT ZU")
-        X88EventJournal.add("follow_up_listen")
+        X88EventJournal.add("conversation_listen")
         voice.startListening()
     }
 
@@ -492,6 +520,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             X88VoiceIntentRouter.Intent.SCREEN_ON -> runOnUiThread { requestStartFeature(Feature.SCREEN) }
             X88VoiceIntentRouter.Intent.SCREEN_OFF -> runOnUiThread { stopFeature(Feature.SCREEN) }
             X88VoiceIntentRouter.Intent.STOP_ALL -> runOnUiThread {
+                stopConversation("stop_all")
                 api.stopAll()
                 X88EventJournal.add("stop_all", "voice")
                 avatar.mode = X88AvatarView.Mode.STOPPED
@@ -500,10 +529,15 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
             X88VoiceIntentRouter.Intent.MASTER_ON -> runOnUiThread { toggleMaster() }
             X88VoiceIntentRouter.Intent.MASTER_OFF -> runOnUiThread {
+                stopConversation("master_off")
                 api.setMasterEnabled(false)
                 X88EventJournal.add("master_off", "voice")
                 showReply("Gerätezugriff ausgeschaltet.", false)
                 refreshStatus()
+            }
+            X88VoiceIntentRouter.Intent.CONVERSATION_STOP -> runOnUiThread {
+                stopConversation("voice")
+                showReply("Gesprächsmodus beendet.", false)
             }
             X88VoiceIntentRouter.Intent.OPEN_SETTINGS -> runOnUiThread { requestSettings() }
             X88VoiceIntentRouter.Intent.DEVICE_STATUS -> runOnUiThread { speakDeviceStatus() }
@@ -605,14 +639,15 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
             setDialogState("DIALOG · READY")
             X88EventJournal.add("tts_done")
-            if (followUpEnabled) {
-                dialogStateView.postDelayed({ startFollowUpListening() }, 450L)
+            if (conversationActive) {
+                dialogStateView.postDelayed({ startConversationListening() }, 450L)
             }
         }
     }
 
     override fun onError(message: String) {
         runOnUiThread {
+            if (conversationActive) stopConversation("voice_error")
             avatar.mode = X88AvatarView.Mode.ATTENTION
             statusView.text = "VOICE · Fehler"
             replyView.text = "Ariana: $message"
