@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.7.5"
+        versionCode = 24
+        versionName = "1.8.0"
     }
 
     signingConfigs {
@@ -110,6 +110,11 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
+
+    // ARIANA X-88 V11: local glTF 2.0 / PBR avatar renderer.
+    implementation("com.google.android.filament:filament-android:1.75.1")
+    implementation("com.google.android.filament:gltfio-android:1.75.1")
+    implementation("com.google.android.filament:filament-utils-android:1.75.1")
 
     testImplementation("junit:junit:4.13.2")
 }
