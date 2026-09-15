@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -25,6 +27,7 @@ class ArianaVoiceController(
     }
 
     private val appContext = context.applicationContext
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val recognizer: SpeechRecognizer? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
@@ -39,6 +42,9 @@ class ArianaVoiceController(
     @Volatile private var speechActive = false
     @Volatile private var listeningActive = false
     @Volatile private var suppressCancelError = false
+    @Volatile private var recognitionReady = false
+    @Volatile private var retryPending = false
+    @Volatile private var recognitionAttempt = 0
 
     init {
         recognizer?.setRecognitionListener(this)
@@ -46,8 +52,11 @@ class ArianaVoiceController(
 
     fun isOnDeviceRecognitionAvailable(): Boolean = recognizer != null
     fun isListening(): Boolean = listeningActive
+    fun isSpeaking(): Boolean = speechActive || tts.isSpeaking
 
-    fun startListening() {
+    fun startListening() = startListeningInternal(allowRetry = true)
+
+    private fun startListeningInternal(allowRetry: Boolean) {
         if (listeningActive) return
         val localRecognizer = recognizer
         if (localRecognizer == null) {
@@ -63,12 +72,34 @@ class ArianaVoiceController(
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         listener.onState("Ich höre zu …")
+        recognitionReady = false
+        retryPending = allowRetry
+        val attempt = ++recognitionAttempt
         listeningActive = true
         runCatching { localRecognizer.startListening(intent) }
+            .onSuccess {
+                mainHandler.postDelayed({
+                    if (attempt == recognitionAttempt && listeningActive && !recognitionReady && retryPending) {
+                        retryListeningOnce()
+                    }
+                }, 1800L)
+            }
             .onFailure {
                 listeningActive = false
-                listener.onError("Spracherkennung konnte nicht gestartet werden.")
+                if (allowRetry) retryListeningOnce()
+                else listener.onError("Spracherkennung konnte nicht gestartet werden.")
             }
+    }
+
+    private fun retryListeningOnce() {
+        if (!retryPending) return
+        retryPending = false
+        recognitionReady = false
+        listeningActive = false
+        suppressCancelError = true
+        recognizer?.cancel()
+        listener.onState("Spracherkennung wird neu aktiviert …")
+        mainHandler.postDelayed({ startListeningInternal(allowRetry = false) }, 350L)
     }
 
     fun interruptSpeech(): Boolean {
@@ -81,6 +112,9 @@ class ArianaVoiceController(
     }
 
     fun cancelListening(): Boolean {
+        retryPending = false
+        recognitionReady = false
+        recognitionAttempt++
         if (!listeningActive) return false
         listeningActive = false
         suppressCancelError = true
@@ -99,6 +133,9 @@ class ArianaVoiceController(
     }
 
     fun shutdown() {
+        retryPending = false
+        recognitionAttempt++
+        mainHandler.removeCallbacksAndMessages(null)
         listeningActive = false
         recognizer?.cancel()
         recognizer?.destroy()
@@ -150,10 +187,14 @@ class ArianaVoiceController(
     }
 
     override fun onReadyForSpeech(params: Bundle?) {
+        recognitionReady = true
+        retryPending = false
         listener.onState("Sprich jetzt.")
     }
 
     override fun onBeginningOfSpeech() {
+        recognitionReady = true
+        retryPending = false
         listener.onState("Ich höre dich …")
     }
 
@@ -166,6 +207,10 @@ class ArianaVoiceController(
 
     override fun onError(error: Int) {
         listeningActive = false
+        if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && retryPending) {
+            retryListeningOnce()
+            return
+        }
         if (suppressCancelError && error == SpeechRecognizer.ERROR_CLIENT) {
             suppressCancelError = false
             return
@@ -188,6 +233,9 @@ class ArianaVoiceController(
 
     override fun onResults(results: Bundle?) {
         listeningActive = false
+        recognitionReady = false
+        retryPending = false
+        recognitionAttempt++
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             ?.firstOrNull()

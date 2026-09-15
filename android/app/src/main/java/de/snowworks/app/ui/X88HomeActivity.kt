@@ -473,6 +473,19 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         voice.startListening()
     }
 
+    private fun ensureConversationListeningAfterSpeech(attempt: Int = 0) {
+        if (!conversationActive || isFinishing || isDestroyed) return
+        if (voice.isSpeaking()) {
+            if (attempt < 120) {
+                dialogStateView.postDelayed({ ensureConversationListeningAfterSpeech(attempt + 1) }, 250L)
+            } else {
+                stopConversation("tts_rearm_timeout")
+            }
+            return
+        }
+        if (!voice.isListening()) startConversationListening()
+    }
+
     private fun startPushToTalk() {
         if (!api.isMasterEnabled() || api.isBlocked()) {
             showReply("Schalte zuerst den X-88 Gerätezugriff ein.", true)
@@ -617,6 +630,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                     setDialogState("DIALOG · ANTWORT")
                     showReply(outcome.reply.trim(), speak)
                     renderHistory(history)
+                    if (speak && conversationActive) {
+                        dialogStateView.postDelayed({ ensureConversationListeningAfterSpeech() }, 1200L)
+                    }
                     if (!speak) dialogStateView.postDelayed({ setDialogState("DIALOG · READY") }, 1200L)
                 } else {
                     setDialogState("DIALOG · FEHLER")
@@ -640,7 +656,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             setDialogState("DIALOG · READY")
             X88EventJournal.add("tts_done")
             if (conversationActive) {
-                dialogStateView.postDelayed({ startConversationListening() }, 450L)
+                dialogStateView.postDelayed({ startConversationListening() }, 900L)
             }
         }
     }
