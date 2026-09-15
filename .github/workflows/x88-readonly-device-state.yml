@@ -1,0 +1,75 @@
+name: X-88 Read-only Device State Gate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt"
+      - ".github/workflows/x88-readonly-device-state.yml"
+  pull_request:
+    paths:
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt"
+      - ".github/workflows/x88-readonly-device-state.yml"
+
+jobs:
+  readonly-security-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify bearer-only read path and data minimization
+        shell: bash
+        run: |
+          set -euo pipefail
+          server='android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt'
+          state='android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt'
+
+          grep -F 'path == "/v1/device/state" && method == "GET"' "$server"
+          grep -F 'DialogueSessionStore.validateBearer(headers["authorization"])' "$server"
+          grep -F '.put("model", "x88-device-state-v1")' "$server"
+          grep -F 'object ReadOnlyDeviceState' "$state"
+          grep -F 'PermissionStore(app)' "$state"
+          grep -F 'SessionRegistry.isActive(feature)' "$state"
+
+          # Reader must not import or invoke device executors/capture/content stores.
+          ! grep -F 'ArianaDeviceApi' "$state"
+          ! grep -F 'ArianaCaptureService' "$state"
+          ! grep -F 'CameraFrameStore' "$state"
+          ! grep -F 'NotificationStore' "$state"
+          ! grep -F 'MediaProjection' "$state"
+          ! grep -F 'CameraManager' "$state"
+          ! grep -F 'AudioRecord' "$state"
+          ! grep -F 'LocationManager' "$state"
+
+          # Snapshot schema must not expose content-bearing or secret-bearing fields.
+          ! grep -E '\.put\("(jpegBase64|text|title|key|filePath|path|latitude|longitude|location|pairingCode|token|bearer|approvalGrant|bluetoothDevices)"' "$state"
+
+          # Endpoint body itself must remain a pure snapshot response.
+          body="$(awk '/private fun readOnlyDeviceState/{flag=1} /private fun actionProposal/{flag=0} flag' "$server")"
+          grep -F 'ReadOnlyDeviceState.snapshot(context)' <<<"$body"
+          ! grep -F 'DialogueRouter.generate' <<<"$body"
+          ! grep -F 'ArianaCaptureService' <<<"$body"
+          ! grep -F 'action(context' <<<"$body"
+          ! grep -F 'ActionApprovalStore.approve' <<<"$body"
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Compile Android debug sources
+        working-directory: android
+        run: gradle :app:compileDebugKotlin --stacktrace
