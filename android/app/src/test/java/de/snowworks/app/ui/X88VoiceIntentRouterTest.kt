@@ -38,10 +38,42 @@ class X88VoiceIntentRouterTest {
     }
 
     @Test
+    fun routesConversationStopGerman() {
+        assertEquals(
+            X88VoiceIntentRouter.Intent.CONVERSATION_STOP,
+            X88VoiceIntentRouter.classify("Ariana, Gespräch beenden"),
+        )
+    }
+
+    @Test
+    fun routesConversationStopWithoutUmlaut() {
+        assertEquals(
+            X88VoiceIntentRouter.Intent.CONVERSATION_STOP,
+            X88VoiceIntentRouter.classify("Gespraech stoppen"),
+        )
+    }
+
+    @Test
+    fun conversationStopWinsBeforeGenericStopAllMatching() {
+        assertEquals(
+            X88VoiceIntentRouter.Intent.CONVERSATION_STOP,
+            X88VoiceIntentRouter.classify("Conversation stop"),
+        )
+    }
+
+    @Test
     fun routesDeviceStatus() {
         assertEquals(
             X88VoiceIntentRouter.Intent.DEVICE_STATUS,
             X88VoiceIntentRouter.classify("Wie ist dein Gerätestatus?"),
+        )
+    }
+
+    @Test
+    fun freeDialogueRemainsFreeDialogue() {
+        assertEquals(
+            X88VoiceIntentRouter.Intent.NONE,
+            X88VoiceIntentRouter.classify("Erzähl mir etwas über Sterne"),
         )
     }
 }
