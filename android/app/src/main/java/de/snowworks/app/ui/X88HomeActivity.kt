@@ -38,7 +38,7 @@ import java.util.concurrent.Executors
 class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var api: ArianaDeviceApi
     private lateinit var voice: ArianaVoiceController
-    private lateinit var avatar: X88AvatarView
+    private lateinit var avatar: X88AvatarHostView
     private lateinit var masterButton: MaterialButton
     private lateinit var cameraButton: MaterialButton
     private lateinit var microphoneButton: MaterialButton
@@ -124,7 +124,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         root.addView(label("LOCAL DEVICE CORE", 28f, "#EAF7FF"))
         root.addView(label("Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}", 11f, "#6F8799"))
 
-        avatar = X88AvatarView(this)
+        avatar = X88AvatarHostView(this)
         root.addView(avatar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(310)))
 
         statusView = label("Status wird gelesen …", 13f, "#25D9FF")
