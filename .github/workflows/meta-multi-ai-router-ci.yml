@@ -1,0 +1,59 @@
+name: Meta Multi-AI Router CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/meta-multi-ai-router
+    paths:
+      - "android/**"
+      - ".github/workflows/meta-multi-ai-router-ci.yml"
+
+jobs:
+  compile-router:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK without legacy tools package
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Multi-AI source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          router='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiRouter.kt'
+          dialogue='android/app/src/main/java/de/snowworks/ariana/bridge/DialogueRouter.kt'
+          app='android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
+          test -f "$router"
+          grep -F 'enum class Mode' "$router"
+          grep -F 'Mode.META' "$router"
+          grep -F 'Mode.PARALLEL' "$router"
+          grep -F 'Mode.REVIEW' "$router"
+          grep -F 'Mode.CONSENSUS' "$router"
+          grep -F 'SecureAiProviderStore' "$router"
+          grep -F 'HttpsDialogueProvider' "$router"
+          grep -F '"/meta"' "$dialogue"
+          grep -F '"/parallel"' "$dialogue"
+          grep -F '"/review"' "$dialogue"
+          grep -F '"/consensus"' "$dialogue"
+          grep -F 'DialogueRouter.initialize(this)' "$app"
+
+      - name: Compile Kotlin and run unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest :app:assembleDebug --stacktrace
