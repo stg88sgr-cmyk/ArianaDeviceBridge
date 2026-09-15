@@ -76,7 +76,8 @@
         <activity
             android:name=".ui.X88HomeActivity"
             android:exported="true"
-            android:label="ARIANA X-88">
+            android:label="ARIANA X-88"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

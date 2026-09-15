@@ -27,14 +27,28 @@ class ArianaPresenceWidgetProvider : AppWidgetProvider() {
             val views = RemoteViews(context.packageName, R.layout.ariana_presence_widget)
             views.setTextViewText(R.id.widget_core_status, state.core)
             views.setTextViewText(R.id.widget_dialog_status, state.dialog)
-            val launchIntent = Intent(context, X88HomeActivity::class.java)
-            val pendingIntent = PendingIntent.getActivity(
+            val launchIntent = Intent(context, X88HomeActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            }
+            val openPendingIntent = PendingIntent.getActivity(
                 context,
                 8800 + appWidgetId,
                 launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
-            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+            val speakIntent = Intent(context, X88HomeActivity::class.java).apply {
+                action = "de.snowworks.app.widget.START_CONVERSATION"
+                flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                putExtra(X88HomeActivity.EXTRA_START_CONVERSATION, true)
+            }
+            val speakPendingIntent = PendingIntent.getActivity(
+                context,
+                9800 + appWidgetId,
+                speakIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            views.setOnClickPendingIntent(R.id.widget_root, openPendingIntent)
+            views.setOnClickPendingIntent(R.id.widget_speak, speakPendingIntent)
             manager.updateAppWidget(appWidgetId, views)
         }
     }

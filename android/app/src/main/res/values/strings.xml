@@ -13,4 +13,5 @@
     <string name="widget_description">Lokaler Ariana-Presence-Status für den Startbildschirm</string>
     <string name="widget_avatar_description">ARIANA X-88</string>
     <string name="widget_open_hint">Tippen zum Öffnen · Phone Core v1</string>
+    <string name="widget_speak">SPRECHEN</string>
 </resources>

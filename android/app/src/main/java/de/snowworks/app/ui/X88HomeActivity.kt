@@ -46,6 +46,9 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
+    companion object {
+        const val EXTRA_START_CONVERSATION = "de.snowworks.app.extra.START_CONVERSATION"
+    }
     private lateinit var api: ArianaDeviceApi
     private lateinit var voice: ArianaVoiceController
     private lateinit var avatar: X88AvatarView
@@ -122,6 +125,23 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         refreshStatus()
         startCoreHealthMonitor()
         loadLastConversation()
+        handlePresenceIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePresenceIntent(intent)
+    }
+
+    private fun handlePresenceIntent(sourceIntent: Intent?) {
+        if (sourceIntent?.getBooleanExtra(EXTRA_START_CONVERSATION, false) != true) return
+        sourceIntent.removeExtra(EXTRA_START_CONVERSATION)
+        if (::conversationButton.isInitialized) {
+            conversationButton.post {
+                if (!conversationActive && !isFinishing && !isDestroyed) startConversation()
+            }
+        }
     }
 
     override fun onResume() {
