@@ -52,11 +52,14 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
     private lateinit var chatHistoryView: TextView
+    private lateinit var chatHistoryScroll: ScrollView
+    private lateinit var dialogStateView: TextView
     private lateinit var modulesView: TextView
     private lateinit var textInput: EditText
     private var pendingPermissionFeature: Feature? = null
     @Volatile private var coreStatusLabel = "CORE · CHECKING"
     @Volatile private var historyLoaded = false
+    @Volatile private var dialogStateLabel = "DIALOG · READY"
 
     private val dialogueExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88HomeDialogue").apply { isDaemon = true }
@@ -162,11 +165,16 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 "$who: ${item.content}"
             }
         }
+        if (::chatHistoryScroll.isInitialized) {
+            chatHistoryScroll.post { chatHistoryScroll.fullScroll(View.FOCUS_DOWN) }
+        }
     }
 
     private fun startCoreHealthMonitor() {
         healthExecutor.scheduleWithFixedDelay({
-            val health = LoopbackArianaProvider().health()
+            val provider = LoopbackArianaProvider()
+            val health = provider.health()
+            val history = if (health.online) runCatching { provider.recentHistory(12) }.getOrDefault(emptyList()) else emptyList()
             coreStatusLabel = if (health.online) {
                 val gen = health.generation?.let { "GEN $it" } ?: "GEN ?"
                 val branch = health.branch?.uppercase() ?: "UNKNOWN"
@@ -175,7 +183,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 "CORE OFFLINE"
             }
             runOnUiThread {
-                if (!isFinishing && !isDestroyed && ::statusView.isInitialized) refreshStatus()
+                if (!isFinishing && !isDestroyed && ::statusView.isInitialized) {
+                    refreshStatus()
+                    if (history.isNotEmpty()) renderHistory(history)
+                }
             }
         }, 0L, 5L, TimeUnit.SECONDS)
     }
@@ -198,10 +209,16 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         transcriptView = label("Du: Noch nichts gesprochen.", 15f, "#EAF7FF")
         replyView = label("Ariana: X-88 bereit.", 15f, "#E8D9F2")
         chatHistoryView = label("Verlauf wird geladen …", 13f, "#B8CAD6")
+        chatHistoryScroll = ScrollView(this).apply {
+            isFillViewport = true
+            setBackgroundColor(Color.parseColor("#080D14"))
+            addView(chatHistoryView)
+        }
+        dialogStateView = label(dialogStateLabel, 11f, "#25D9FF")
         modulesView = label("MODULES · loading …", 11f, "#7896A6")
         root.addView(statusView)
-        root.addView(label("DIALOG · LOKAL", 11f, "#6F8799"))
-        root.addView(chatHistoryView)
+        root.addView(dialogStateView)
+        root.addView(chatHistoryScroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(240)))
         root.addView(transcriptView)
         root.addView(replyView)
         root.addView(modulesView)
@@ -422,7 +439,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
             X88VoiceIntentRouter.Intent.OPEN_SETTINGS -> runOnUiThread { requestSettings() }
             X88VoiceIntentRouter.Intent.DEVICE_STATUS -> runOnUiThread { speakDeviceStatus() }
-            X88VoiceIntentRouter.Intent.NONE -> requestDialogue(text, speak = true)
+            X88VoiceIntentRouter.Intent.NONE -> {
+                runOnUiThread { setDialogState("DIALOG · DENKT") }
+                requestDialogue(text, speak = true)
+            }
         }
     }
 
@@ -473,13 +493,17 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         transcriptView.text = "Du: $text"
         replyView.text = "Ariana: …"
         avatar.mode = X88AvatarView.Mode.THINKING
+        setDialogState("DIALOG · DENKT")
         X88EventJournal.add("text_dialogue")
         requestDialogue(text, speak = false)
     }
 
     private fun requestDialogue(text: String, speak: Boolean) {
         if (DialogueRouter.providerId() == null) {
-            runOnUiThread { showReply("Die lokale Sprache läuft. Für freie Antworten ist noch kein KI-Provider aktiv.", true) }
+            runOnUiThread {
+                setDialogState("DIALOG · OFFLINE")
+                showReply("Die lokale Sprache läuft. Für freie Antworten ist noch kein KI-Provider aktiv.", true)
+            }
             return
         }
         dialogueExecutor.execute {
@@ -488,9 +512,14 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (outcome.ok && !outcome.reply.isNullOrBlank()) {
+                    setDialogState("DIALOG · ANTWORT")
                     showReply(outcome.reply.trim(), speak)
                     renderHistory(history)
-                } else showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
+                    if (!speak) dialogStateView.postDelayed({ setDialogState("DIALOG · READY") }, 1200L)
+                } else {
+                    setDialogState("DIALOG · FEHLER")
+                    showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
+                }
             }
         }
     }
@@ -498,6 +527,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     override fun onSpeechStarted() {
         runOnUiThread {
             if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.SPEAKING
+            setDialogState("DIALOG · SPRICHT")
             X88EventJournal.add("tts_start")
         }
     }
@@ -505,6 +535,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     override fun onSpeechFinished() {
         runOnUiThread {
             if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
+            setDialogState("DIALOG · READY")
             X88EventJournal.add("tts_done")
         }
     }
@@ -516,6 +547,11 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             replyView.text = "Ariana: $message"
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun setDialogState(value: String) {
+        dialogStateLabel = value
+        if (::dialogStateView.isInitialized) dialogStateView.text = value
     }
 
     private fun showReply(message: String, speak: Boolean) {
