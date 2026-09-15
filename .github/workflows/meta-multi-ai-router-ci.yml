@@ -40,6 +40,7 @@ jobs:
           router='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiRouter.kt'
           dialogue='android/app/src/main/java/de/snowworks/ariana/bridge/DialogueRouter.kt'
           app='android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
+          settings='android/app/src/main/java/de/snowworks/app/ui/AiProviderSettingsActivity.kt'
           test -f "$router"
           grep -F 'enum class Mode' "$router"
           grep -F 'Mode.META' "$router"
@@ -48,11 +49,15 @@ jobs:
           grep -F 'Mode.CONSENSUS' "$router"
           grep -F 'SecureAiProviderStore' "$router"
           grep -F 'HttpsDialogueProvider' "$router"
+          grep -F 'remoteProviderIsPrimary' "$router"
+          grep -F 'DISTINCT_PRIMARY_UNAVAILABLE' "$router"
           grep -F '"/meta"' "$dialogue"
           grep -F '"/parallel"' "$dialogue"
           grep -F '"/review"' "$dialogue"
           grep -F '"/consensus"' "$dialogue"
           grep -F 'DialogueRouter.initialize(this)' "$app"
+          grep -F 'https://api.meta.ai/v1/chat/completions' "$settings"
+          grep -F 'muse-spark-1.3' "$settings"
 
       - name: Compile Kotlin and run unit tests
         working-directory: android
