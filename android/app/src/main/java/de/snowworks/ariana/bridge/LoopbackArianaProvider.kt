@@ -16,6 +16,7 @@ class LoopbackArianaProvider {
     data class HistoryMessage(
         val role: String,
         val content: String,
+        val timestampSeconds: Double? = null,
     )
 
     fun health(): Health = runCatching {
@@ -37,7 +38,7 @@ class LoopbackArianaProvider {
     fun isHealthy(): Boolean = health().online
 
     fun recentHistory(limit: Int = 6): List<HistoryMessage> = runCatching {
-        val safeLimit = limit.coerceIn(1, 20)
+        val safeLimit = limit.coerceIn(1, 40)
         val c = open("/v1/history?limit=$safeLimit", "GET", 700, 1500)
         try {
             if (c.responseCode != 200) return@runCatching emptyList()
@@ -48,7 +49,10 @@ class LoopbackArianaProvider {
                     val item = messages.optJSONObject(i) ?: continue
                     val role = item.optString("role").trim()
                     val content = item.optString("content").trim()
-                    if (role.isNotBlank() && content.isNotBlank()) add(HistoryMessage(role, content))
+                    val timestamp = item.optDouble("ts", Double.NaN).takeIf { !it.isNaN() }
+                    if (role.isNotBlank() && content.isNotBlank()) {
+                        add(HistoryMessage(role, content, timestamp))
+                    }
                 }
             }
         } finally {

@@ -36,6 +36,10 @@ import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.voice.ArianaVoiceController
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -136,7 +140,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun loadLastConversation() {
         dialogueExecutor.execute {
-            val history = LoopbackArianaProvider().recentHistory(12)
+            val history = LoopbackArianaProvider().recentHistory(24)
             val assistantIndex = history.indexOfLast { it.role == "assistant" }
             val assistant = history.getOrNull(assistantIndex)
             val user = if (assistantIndex > 0) {
@@ -157,13 +161,40 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun renderHistory(history: List<LoopbackArianaProvider.HistoryMessage>) {
         if (!::chatHistoryView.isInitialized) return
-        chatHistoryView.text = if (history.isEmpty()) {
-            "Noch kein lokaler Dialog gespeichert."
+        if (history.isEmpty()) {
+            chatHistoryView.text = "Noch kein lokaler Dialog gespeichert."
         } else {
-            history.joinToString("\n\n") { item ->
+            val zone = ZoneId.systemDefault()
+            val today = LocalDate.now(zone)
+            val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
+            val dateTimeFormat = DateTimeFormatter.ofPattern("dd.MM. · HH:mm")
+            val lines = mutableListOf<String>()
+            var previousTimestamp: Double? = null
+            history.forEach { item ->
+                val timestamp = item.timestampSeconds
+                val startsSession = previousTimestamp == null ||
+                    (timestamp != null && previousTimestamp != null && timestamp - previousTimestamp!! > 30 * 60.0)
+                if (startsSession) {
+                    val heading = timestamp?.let { raw ->
+                        val dateTime = Instant.ofEpochMilli((raw * 1000).toLong()).atZone(zone)
+                        if (dateTime.toLocalDate() == today) {
+                            "HEUTE · ${timeFormat.format(dateTime)}"
+                        } else {
+                            "VORHERIGE SITZUNG · ${dateTimeFormat.format(dateTime)}"
+                        }
+                    } ?: "SITZUNG"
+                    if (lines.isNotEmpty()) lines += ""
+                    lines += "── $heading ──"
+                }
                 val who = if (item.role == "user") "Du" else "Ariana"
-                "$who: ${item.content}"
+                val stamp = timestamp?.let { raw ->
+                    val dateTime = Instant.ofEpochMilli((raw * 1000).toLong()).atZone(zone)
+                    " · ${timeFormat.format(dateTime)}"
+                }.orEmpty()
+                lines += "$who$stamp: ${item.content}"
+                if (timestamp != null) previousTimestamp = timestamp
             }
+            chatHistoryView.text = lines.joinToString("\n\n")
         }
         if (::chatHistoryScroll.isInitialized) {
             chatHistoryScroll.post { chatHistoryScroll.fullScroll(View.FOCUS_DOWN) }
@@ -174,7 +205,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         healthExecutor.scheduleWithFixedDelay({
             val provider = LoopbackArianaProvider()
             val health = provider.health()
-            val history = if (health.online) runCatching { provider.recentHistory(12) }.getOrDefault(emptyList()) else emptyList()
+            val history = if (health.online) runCatching { provider.recentHistory(24) }.getOrDefault(emptyList()) else emptyList()
             coreStatusLabel = if (health.online) {
                 val gen = health.generation?.let { "GEN $it" } ?: "GEN ?"
                 val branch = health.branch?.uppercase() ?: "UNKNOWN"
@@ -508,7 +539,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
         dialogueExecutor.execute {
             val outcome = DialogueRouter.generate(text)
-            val history = if (outcome.ok) LoopbackArianaProvider().recentHistory(12) else emptyList()
+            val history = if (outcome.ok) LoopbackArianaProvider().recentHistory(24) else emptyList()
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (outcome.ok && !outcome.reply.isNullOrBlank()) {
