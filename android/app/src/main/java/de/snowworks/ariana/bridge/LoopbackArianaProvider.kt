@@ -13,6 +13,11 @@ class LoopbackArianaProvider {
         val branch: String? = null,
     )
 
+    data class HistoryMessage(
+        val role: String,
+        val content: String,
+    )
+
     fun health(): Health = runCatching {
         val c = open("/health", "GET", 700, 700)
         try {
@@ -30,6 +35,26 @@ class LoopbackArianaProvider {
     }.getOrElse { Health(false) }
 
     fun isHealthy(): Boolean = health().online
+
+    fun recentHistory(limit: Int = 6): List<HistoryMessage> = runCatching {
+        val safeLimit = limit.coerceIn(1, 20)
+        val c = open("/v1/history?limit=$safeLimit", "GET", 700, 1500)
+        try {
+            if (c.responseCode != 200) return@runCatching emptyList()
+            val body = c.inputStream.bufferedReader().use { it.readText() }
+            val messages = JSONObject(body).optJSONArray("messages") ?: return@runCatching emptyList()
+            buildList {
+                for (i in 0 until messages.length()) {
+                    val item = messages.optJSONObject(i) ?: continue
+                    val role = item.optString("role").trim()
+                    val content = item.optString("content").trim()
+                    if (role.isNotBlank() && content.isNotBlank()) add(HistoryMessage(role, content))
+                }
+            }
+        } finally {
+            c.disconnect()
+        }
+    }.getOrElse { emptyList() }
 
     fun generate(text: String): String {
         val payload = JSONObject()

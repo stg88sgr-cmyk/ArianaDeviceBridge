@@ -52,6 +52,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var modulesView: TextView
     private var pendingPermissionFeature: Feature? = null
     @Volatile private var coreStatusLabel = "CORE · CHECKING"
+    @Volatile private var historyLoaded = false
 
     private val dialogueExecutor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88HomeDialogue").apply { isDaemon = true }
@@ -105,6 +106,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         X88EventJournal.add("home_open")
         refreshStatus()
         startCoreHealthMonitor()
+        loadLastConversation()
     }
 
     override fun onResume() {
@@ -115,6 +117,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             runCatching { AiProviderManager.activateConfigured(this) }
         }
         if (::statusView.isInitialized) refreshStatus()
+        if (!historyLoaded) loadLastConversation()
     }
 
     override fun onDestroy() {
@@ -122,6 +125,27 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         healthExecutor.shutdownNow()
         voice.shutdown()
         super.onDestroy()
+    }
+
+    private fun loadLastConversation() {
+        dialogueExecutor.execute {
+            val history = LoopbackArianaProvider().recentHistory(8)
+            if (history.isEmpty()) return@execute
+
+            val assistantIndex = history.indexOfLast { it.role == "assistant" }
+            if (assistantIndex < 0) return@execute
+            val assistant = history[assistantIndex]
+            val user = history.subList(0, assistantIndex).lastOrNull { it.role == "user" }
+
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (transcriptView.text == "Du: Noch nichts gesprochen.") {
+                    user?.let { transcriptView.text = "Du: ${it.content}" }
+                    replyView.text = "Ariana: ${assistant.content}"
+                }
+                historyLoaded = true
+            }
+        }
     }
 
     private fun startCoreHealthMonitor() {
