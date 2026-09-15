@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
+import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -50,6 +51,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
     private lateinit var modulesView: TextView
+    private lateinit var textInput: EditText
     private var pendingPermissionFeature: Feature? = null
     @Volatile private var coreStatusLabel = "CORE · CHECKING"
     @Volatile private var historyLoaded = false
@@ -200,6 +202,16 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
         root.addView(masterButton)
         root.addView(button("TALK · Push-to-talk") { startPushToTalk() })
+        textInput = EditText(this).apply {
+            hint = "Nachricht an Ariana …"
+            setTextColor(Color.parseColor("#EAF7FF"))
+            setHintTextColor(Color.parseColor("#6F8799"))
+            setBackgroundColor(Color.parseColor("#0B1018"))
+            setPadding(dp(12))
+            maxLines = 4
+        }
+        root.addView(textInput, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        root.addView(button("SEND · Lokal") { sendTypedMessage() })
         root.addView(row(cameraButton, microphoneButton))
         root.addView(row(screenButton, button("GRANTS") {
             startActivity(Intent(this, DeviceGrantsActivity::class.java))
@@ -386,7 +398,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             }
             X88VoiceIntentRouter.Intent.OPEN_SETTINGS -> runOnUiThread { requestSettings() }
             X88VoiceIntentRouter.Intent.DEVICE_STATUS -> runOnUiThread { speakDeviceStatus() }
-            X88VoiceIntentRouter.Intent.NONE -> requestDialogue(text)
+            X88VoiceIntentRouter.Intent.NONE -> requestDialogue(text, speak = true)
         }
     }
 
@@ -430,7 +442,18 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             .show()
     }
 
-    private fun requestDialogue(text: String) {
+    private fun sendTypedMessage() {
+        val text = textInput.text.toString().trim()
+        if (text.isBlank()) return
+        textInput.text.clear()
+        transcriptView.text = "Du: $text"
+        replyView.text = "Ariana: …"
+        avatar.mode = X88AvatarView.Mode.THINKING
+        X88EventJournal.add("text_dialogue")
+        requestDialogue(text, speak = false)
+    }
+
+    private fun requestDialogue(text: String, speak: Boolean) {
         if (DialogueRouter.providerId() == null) {
             runOnUiThread { showReply("Die lokale Sprache läuft. Für freie Antworten ist noch kein KI-Provider aktiv.", true) }
             return
@@ -439,7 +462,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             val outcome = DialogueRouter.generate(text)
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (outcome.ok && !outcome.reply.isNullOrBlank()) showReply(outcome.reply.trim(), true)
+                if (outcome.ok && !outcome.reply.isNullOrBlank()) showReply(outcome.reply.trim(), speak)
                 else showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
             }
         }
