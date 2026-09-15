@@ -63,7 +63,7 @@ jobs:
           grep -F 'path == "/state" && method == "GET"' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'LocalBridgeServer.start(this)' android/app/src/main/java/de/snowworks/app/SnowworksApp.kt
           grep -Eq 'versionCode = [1-9][0-9]*' android/app/build.gradle.kts
-          grep -Eq 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' android/app/build.gradle.kts
+          grep -Eq 'versionName = "[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?"' android/app/build.gradle.kts
 
       - name: X-88 loopback security self-test v2 gate
         shell: bash
