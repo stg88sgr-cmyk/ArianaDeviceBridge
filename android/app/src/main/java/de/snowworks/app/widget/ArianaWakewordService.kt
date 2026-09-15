@@ -23,6 +23,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import de.snowworks.app.R
 import de.snowworks.app.ui.X88HomeActivity
+import de.snowworks.app.ui.X88EventJournal
 import de.snowworks.ariana.ArianaGate
 
 class ArianaWakewordService : Service(), RecognitionListener {
@@ -71,6 +72,7 @@ class ArianaWakewordService : Service(), RecognitionListener {
         }
 
         WakewordStateStore.setEnabled(this, true)
+        X88EventJournal.add("wakeword_service", "start")
         paused = false
         ensureForeground("WAKEWORD · HÖRT ZU")
         startListeningSoon(150L)
@@ -108,8 +110,9 @@ class ArianaWakewordService : Service(), RecognitionListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "de-DE")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "de-DE")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
         }
 
         listening = true
@@ -164,6 +167,7 @@ class ArianaWakewordService : Service(), RecognitionListener {
 
     private fun publishStatus(status: String) {
         WakewordStateStore.setStatus(this, status)
+        WakewordSignalBus.publishStatus(status)
         if (!destroyed && WakewordStateStore.isEnabled(this)) {
             ensureForeground(status)
         }
@@ -242,6 +246,7 @@ class ArianaWakewordService : Service(), RecognitionListener {
 
     override fun onError(error: Int) {
         listening = false
+        X88EventJournal.add("wakeword_error", error.toString())
         if (destroyed || paused || !WakewordStateStore.isEnabled(this)) return
         when (error) {
             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
@@ -249,11 +254,36 @@ class ArianaWakewordService : Service(), RecognitionListener {
                 shutdownWakeword()
             }
             SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-            SpeechRecognizer.ERROR_CLIENT -> rebuildRecognizer(650L)
+            SpeechRecognizer.ERROR_CLIENT -> {
+                publishStatus("WAKEWORD · RETRY")
+                rebuildRecognizer(650L)
+            }
             SpeechRecognizer.ERROR_NO_MATCH,
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> scheduleRestart(350L)
-            else -> scheduleRestart(900L)
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> scheduleRestart(250L)
+            else -> scheduleRestart(700L)
         }
+    }
+
+    private fun handleCandidates(candidates: List<String>, source: String): Boolean {
+        if (destroyed || paused || !WakewordStateStore.isEnabled(this)) return false
+        if (candidates.none(WakewordPolicy::matches)) return false
+
+        paused = true
+        listening = false
+        runCatching { recognizer?.cancel() }
+        X88EventJournal.add("wakeword_match", source)
+        publishStatus("WAKEWORD · ERKANNT")
+        val delivered = WakewordSignalBus.emit()
+        if (!delivered) {
+            publishStatus("WAKEWORD · ERKANNT · SPRECHEN TIPPEN")
+            handler.postDelayed({
+                if (paused && WakewordStateStore.isEnabled(this) && !destroyed) {
+                    paused = false
+                    startListeningSoon(100L)
+                }
+            }, 12_000L)
+        }
+        return true
     }
 
     override fun onResults(results: Bundle?) {
@@ -261,27 +291,19 @@ class ArianaWakewordService : Service(), RecognitionListener {
         val candidates = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             .orEmpty()
-        if (candidates.any(WakewordPolicy::matches)) {
-            paused = true
-            publishStatus("WAKEWORD · ERKANNT")
-            val delivered = WakewordSignalBus.emit()
-            if (!delivered) {
-                publishStatus("WAKEWORD · ERKANNT · SPRECHEN TIPPEN")
-                handler.postDelayed({
-                    if (paused && WakewordStateStore.isEnabled(this) && !destroyed) {
-                        paused = false
-                        startListeningSoon(100L)
-                    }
-                }, 12_000L)
-            }
-        } else {
-            scheduleRestart(300L)
-        }
+        if (!handleCandidates(candidates, "final")) scheduleRestart(250L)
     }
 
     override fun onRmsChanged(rmsdB: Float) = Unit
     override fun onBufferReceived(buffer: ByteArray?) = Unit
-    override fun onPartialResults(partialResults: Bundle?) = Unit
+
+    override fun onPartialResults(partialResults: Bundle?) {
+        val candidates = partialResults
+            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            .orEmpty()
+        handleCandidates(candidates, "partial")
+    }
+
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
 
     private fun shutdownWakeword() {

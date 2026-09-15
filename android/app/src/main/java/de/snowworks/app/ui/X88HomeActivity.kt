@@ -166,6 +166,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 if (!conversationActive && !isFinishing && !isDestroyed) startConversation()
             }
         }
+        WakewordSignalBus.statusListener = { status ->
+            runOnUiThread {
+                if (::wakewordButton.isInitialized && WakewordStateStore.isEnabled(this)) {
+                    wakewordButton.text = status
+                }
+            }
+        }
         if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
             !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
         ) {
@@ -183,11 +190,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onPause() {
         WakewordSignalBus.listener = null
+        WakewordSignalBus.statusListener = null
         super.onPause()
     }
 
     override fun onDestroy() {
         WakewordSignalBus.listener = null
+        WakewordSignalBus.statusListener = null
         dialogueExecutor.shutdownNow()
         healthExecutor.shutdownNow()
         voice.shutdown()
@@ -482,7 +491,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
 
     private fun wakewordLabel(): String =
-        if (WakewordStateStore.isEnabled(this)) "WAKEWORD · ON" else "WAKEWORD · OFF"
+        if (WakewordStateStore.isEnabled(this)) WakewordStateStore.status(this) else "WAKEWORD · OFF"
 
     private fun refreshWakewordButton() {
         if (::wakewordButton.isInitialized) wakewordButton.text = wakewordLabel()
