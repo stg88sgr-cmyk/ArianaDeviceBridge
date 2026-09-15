@@ -72,6 +72,20 @@ object MultiAiRouter {
     }
 
     private fun parallel(context: Context, text: String): Result {
+        // If the remote provider is already Ariana's active primary provider,
+        // do not query the exact same model twice and pretend it is independent.
+        if (remoteProviderIsPrimary(context)) {
+            val meta = callMeta(context, text)
+            return Result(
+                ok = meta.ok,
+                mode = Mode.PARALLEL,
+                primaryProviderId = DialogueRouter.providerId(),
+                metaProviderId = meta.providerId,
+                metaReply = meta.reply,
+                error = meta.error,
+            )
+        }
+
         val primaryFuture = executor.submit<DialogueRouter.Outcome> { DialogueRouter.generate(text) }
         val metaFuture = executor.submit<RemoteOutcome> { callMeta(context, text) }
 
@@ -90,6 +104,15 @@ object MultiAiRouter {
     }
 
     private fun review(context: Context, text: String): Result {
+        if (remoteProviderIsPrimary(context)) {
+            return Result(
+                ok = false,
+                mode = Mode.REVIEW,
+                primaryProviderId = DialogueRouter.providerId(),
+                error = "DISTINCT_PRIMARY_UNAVAILABLE",
+            )
+        }
+
         val primary = DialogueRouter.generate(text)
         if (!primary.ok || primary.reply.isNullOrBlank()) {
             return Result(
@@ -127,6 +150,7 @@ object MultiAiRouter {
             return Result(
                 ok = true,
                 mode = Mode.CONSENSUS,
+                primaryProviderId = parallel.primaryProviderId,
                 metaProviderId = parallel.metaProviderId,
                 metaReply = parallel.metaReply,
                 consensus = parallel.metaReply,
@@ -179,13 +203,25 @@ object MultiAiRouter {
         }
     }
 
+    private fun remoteProviderIsPrimary(context: Context): Boolean {
+        val config = SecureAiProviderStore(context.applicationContext).load() ?: return false
+        return DialogueRouter.providerId() == activeRemoteProviderId(config)
+    }
+
+    private fun activeRemoteProviderId(config: SecureAiProviderStore.Config): String {
+        val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
+        val safeHost = host.lowercase().replace(Regex("[^a-z0-9.-]"), "-").take(36)
+        val safeModel = config.model.lowercase().replace(Regex("[^a-z0-9._-]"), "-").take(28)
+        return "https-ai:$safeHost:$safeModel".take(80)
+    }
+
     private fun awaitPrimary(future: java.util.concurrent.Future<DialogueRouter.Outcome>): DialogueRouter.Outcome =
         try {
             future.get(PARALLEL_TIMEOUT_MS, TimeUnit.MILLISECONDS)
         } catch (_: TimeoutException) {
             future.cancel(true)
             DialogueRouter.Outcome(false, error = "PRIMARY_TIMEOUT")
-        } catch (error: ExecutionException) {
+        } catch (_: ExecutionException) {
             future.cancel(true)
             DialogueRouter.Outcome(false, error = "PRIMARY_FAILED")
         } catch (_: Exception) {
