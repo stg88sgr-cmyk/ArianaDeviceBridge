@@ -17,14 +17,26 @@ object AiProviderManager {
     @Synchronized
     fun activateConfigured(context: Context): Boolean {
         val config = SecureAiProviderStore(context).load() ?: run {
-            DialogueRouter.unregister()
+            if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) {
+                DialogueRouter.unregister()
+            }
             return false
         }
         val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
         if (host.isBlank()) {
-            DialogueRouter.unregister()
+            if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) {
+                DialogueRouter.unregister()
+            }
             return false
         }
+
+        // The on-device Ariana model is authoritative whenever it is active.
+        // A configured HTTPS provider (for example Meta Model API) remains
+        // available to MultiAiRouter as a secondary reviewer/co-pilot.
+        if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) {
+            return true
+        }
+
         val generator = HttpsDialogueProvider(config)
         return DialogueRouter.register(providerId(host, config.model)) { text -> generator.generate(text) }
     }
@@ -42,13 +54,20 @@ object AiProviderManager {
             apiKey = apiKey.trim(),
         )
         SecureAiProviderStore(context).save(config)
+
+        // Saving a secondary provider must not evict an already active local Ariana.
+        if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) {
+            return true
+        }
         return activateConfigured(context)
     }
 
     @Synchronized
     fun clear(context: Context) {
         SecureAiProviderStore(context).clear()
-        DialogueRouter.unregister()
+        if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) {
+            DialogueRouter.unregister()
+        }
     }
 
     fun status(context: Context): Status {
@@ -58,9 +77,10 @@ object AiProviderManager {
             return Status(false, false, activeId, null, null, false)
         }
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
+        val configuredProviderId = host?.takeIf { it.isNotBlank() }?.let { providerId(it, config.model) }
         return Status(
             configured = true,
-            active = activeId != null,
+            active = activeId != null && activeId == configuredProviderId,
             providerId = activeId,
             endpointHost = host,
             model = config.model,

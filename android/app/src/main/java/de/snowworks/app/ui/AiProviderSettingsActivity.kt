@@ -81,6 +81,20 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         root.addView(statusView)
 
         root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Meta Muse Spark 1.3 vorbereiten"
+                setOnClickListener { applyMetaPreset() }
+            },
+        )
+        root.addView(
+            label(
+                "Meta-Preset: offizieller Meta Model API Host mit Muse Spark 1.3. " +
+                    "Der API-Key wird nicht vorbelegt und erst beim Speichern verschlüsselt abgelegt.",
+                12f,
+                Color.parseColor("#8FA4AF"),
+            ),
+        )
+        root.addView(
             MaterialButton(this).apply {
                 text = "Speichern und aktivieren"
                 setOnClickListener { saveAndActivate() }
@@ -113,6 +127,12 @@ class AiProviderSettingsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             addView(root)
         }
+    }
+
+    private fun applyMetaPreset() {
+        endpointInput.setText(META_CHAT_COMPLETIONS_ENDPOINT)
+        modelInput.setText(META_MODEL)
+        toast("Meta Muse Spark 1.3 vorbereitet. Jetzt nur noch den Meta Model API-Key eintragen und speichern.")
     }
 
     private fun loadCurrent() {
@@ -170,5 +190,10 @@ class AiProviderSettingsActivity : AppCompatActivity() {
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private companion object {
+        const val META_CHAT_COMPLETIONS_ENDPOINT = "https://api.meta.ai/v1/chat/completions"
+        const val META_MODEL = "muse-spark-1.3"
     }
 }
