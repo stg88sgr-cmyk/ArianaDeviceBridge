@@ -270,19 +270,33 @@ class ArianaWakewordService : Service(), RecognitionListener {
 
         paused = true
         listening = false
-        runCatching { recognizer?.cancel() }
+
+        // Samsung/Android can keep the microphone lease briefly after a wakeword
+        // result. Fully tear down this recognizer before Conversation creates its
+        // own recognizer, then hand off only after a short release window.
+        val wakeRecognizer = recognizer
+        recognizer = null
+        runCatching { wakeRecognizer?.cancel() }
+        runCatching { wakeRecognizer?.destroy() }
         X88EventJournal.add("wakeword_match", source)
+        X88EventJournal.add("wakeword_handoff", "released")
         publishStatus("WAKEWORD · ERKANNT")
-        val delivered = WakewordSignalBus.emit()
-        if (!delivered) {
-            publishStatus("WAKEWORD · ERKANNT · SPRECHEN TIPPEN")
-            handler.postDelayed({
-                if (paused && WakewordStateStore.isEnabled(this) && !destroyed) {
-                    paused = false
-                    startListeningSoon(100L)
-                }
-            }, 12_000L)
-        }
+
+        handler.removeCallbacksAndMessages(null)
+        handler.postDelayed({
+            if (destroyed || !paused || !WakewordStateStore.isEnabled(this)) return@postDelayed
+            val delivered = WakewordSignalBus.emit()
+            X88EventJournal.add("wakeword_handoff", if (delivered) "delivered" else "notification")
+            if (!delivered) {
+                publishStatus("WAKEWORD · ERKANNT · SPRECHEN TIPPEN")
+                handler.postDelayed({
+                    if (paused && WakewordStateStore.isEnabled(this) && !destroyed) {
+                        paused = false
+                        startListeningSoon(100L)
+                    }
+                }, 12_000L)
+            }
+        }, HANDOFF_RELEASE_MS)
         return true
     }
 
@@ -336,6 +350,7 @@ class ArianaWakewordService : Service(), RecognitionListener {
         const val ACTION_RESUME = "de.snowworks.app.wakeword.RESUME"
         private const val CHANNEL_ID = "ariana_presence_wakeword"
         private const val NOTIFICATION_ID = 88
+        private const val HANDOFF_RELEASE_MS = 850L
         @Volatile private var current: ArianaWakewordService? = null
 
         fun start(context: Context) {
