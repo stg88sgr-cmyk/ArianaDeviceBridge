@@ -36,6 +36,7 @@ import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.voice.ArianaVoiceController
+import de.snowworks.ariana.voice.VoiceRecoveryPolicy
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -616,7 +617,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private fun requestDialogue(text: String, speak: Boolean) {
         if (DialogueRouter.providerId() == null) {
             runOnUiThread {
+                if (conversationActive) stopConversation("provider_unavailable")
                 setDialogState("DIALOG · OFFLINE")
+                if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.ATTENTION
                 showReply("Die lokale Sprache läuft. Für freie Antworten ist noch kein KI-Provider aktiv.", true)
             }
             return
@@ -635,7 +638,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                     }
                     if (!speak) dialogStateView.postDelayed({ setDialogState("DIALOG · READY") }, 1200L)
                 } else {
+                    if (conversationActive) stopConversation("dialogue_error")
                     setDialogState("DIALOG · FEHLER")
+                    if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.ATTENTION
                     showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
                 }
             }
@@ -663,10 +668,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onError(message: String) {
         runOnUiThread {
-            val recoverableConversationError = conversationActive && (
-                message.startsWith("Keine Sprache erkannt") ||
-                    message.startsWith("Ich habe nichts eindeutig verstanden")
-                )
+            val recoverableConversationError =
+                conversationActive && VoiceRecoveryPolicy.isRecoverableMessage(message)
             if (recoverableConversationError) {
                 X88EventJournal.add("conversation_rearm", "idle")
                 statusView.text = "VOICE · Warte auf dich …"
