@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
+import android.view.inputmethod.EditorInfo
 import android.view.Gravity
 import android.view.View
 import android.widget.LinearLayout
@@ -50,6 +51,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var statusView: TextView
     private lateinit var transcriptView: TextView
     private lateinit var replyView: TextView
+    private lateinit var chatHistoryView: TextView
     private lateinit var modulesView: TextView
     private lateinit var textInput: EditText
     private var pendingPermissionFeature: Feature? = null
@@ -131,21 +133,33 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     private fun loadLastConversation() {
         dialogueExecutor.execute {
-            val history = LoopbackArianaProvider().recentHistory(8)
-            if (history.isEmpty()) return@execute
-
+            val history = LoopbackArianaProvider().recentHistory(12)
             val assistantIndex = history.indexOfLast { it.role == "assistant" }
-            if (assistantIndex < 0) return@execute
-            val assistant = history[assistantIndex]
-            val user = history.subList(0, assistantIndex).lastOrNull { it.role == "user" }
+            val assistant = history.getOrNull(assistantIndex)
+            val user = if (assistantIndex > 0) {
+                history.subList(0, assistantIndex).lastOrNull { it.role == "user" }
+            } else null
 
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (transcriptView.text == "Du: Noch nichts gesprochen.") {
+                renderHistory(history)
+                if (assistant != null && transcriptView.text == "Du: Noch nichts gesprochen.") {
                     user?.let { transcriptView.text = "Du: ${it.content}" }
                     replyView.text = "Ariana: ${assistant.content}"
                 }
                 historyLoaded = true
+            }
+        }
+    }
+
+    private fun renderHistory(history: List<LoopbackArianaProvider.HistoryMessage>) {
+        if (!::chatHistoryView.isInitialized) return
+        chatHistoryView.text = if (history.isEmpty()) {
+            "Noch kein lokaler Dialog gespeichert."
+        } else {
+            history.joinToString("\n\n") { item ->
+                val who = if (item.role == "user") "Du" else "Ariana"
+                "$who: ${item.content}"
             }
         }
     }
@@ -183,8 +197,11 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         statusView = label("Status wird gelesen …", 13f, "#25D9FF")
         transcriptView = label("Du: Noch nichts gesprochen.", 15f, "#EAF7FF")
         replyView = label("Ariana: X-88 bereit.", 15f, "#E8D9F2")
+        chatHistoryView = label("Verlauf wird geladen …", 13f, "#B8CAD6")
         modulesView = label("MODULES · loading …", 11f, "#7896A6")
         root.addView(statusView)
+        root.addView(label("DIALOG · LOKAL", 11f, "#6F8799"))
+        root.addView(chatHistoryView)
         root.addView(transcriptView)
         root.addView(replyView)
         root.addView(modulesView)
@@ -209,6 +226,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             setBackgroundColor(Color.parseColor("#0B1018"))
             setPadding(dp(12))
             maxLines = 4
+            imeOptions = EditorInfo.IME_ACTION_SEND
+            setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_SEND) {
+                    sendTypedMessage()
+                    true
+                } else false
+            }
         }
         root.addView(textInput, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(button("SEND · Lokal") { sendTypedMessage() })
@@ -460,10 +484,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         }
         dialogueExecutor.execute {
             val outcome = DialogueRouter.generate(text)
+            val history = if (outcome.ok) LoopbackArianaProvider().recentHistory(12) else emptyList()
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                if (outcome.ok && !outcome.reply.isNullOrBlank()) showReply(outcome.reply.trim(), speak)
-                else showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
+                if (outcome.ok && !outcome.reply.isNullOrBlank()) {
+                    showReply(outcome.reply.trim(), speak)
+                    renderHistory(history)
+                } else showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
             }
         }
     }
