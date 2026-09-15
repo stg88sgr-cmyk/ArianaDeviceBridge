@@ -54,6 +54,10 @@ jobs:
           grep -F 'ArianaNotificationListener' android/app/src/bootstrap/AndroidManifest.xml
           grep -F 'tools:node="remove"' android/app/src/bootstrap/AndroidManifest.xml
 
+      - name: Voice recovery unit gate
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --tests de.snowworks.ariana.voice.ConversationVoicePolicyTest --stacktrace
+
       - name: Assemble bootstrap APK
         working-directory: android
         env:
