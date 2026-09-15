@@ -8,8 +8,10 @@ object WakewordPolicy {
         .replace(Regex("\\s+"), " ")
 
     fun matches(raw: String): Boolean {
-        val text = normalize(raw)
-        if (!text.contains("ariana")) return false
-        return text.contains("rede mit mir") || text.contains("red mit mir")
+        val tokens = normalize(raw).split(' ').filter { it.isNotBlank() }
+        if (tokens.none { it == "ariana" }) return false
+        return tokens.windowed(3).any { parts ->
+            parts[0] in setOf("rede", "red") && parts[1] == "mit" && parts[2] == "mir"
+        }
     }
 }

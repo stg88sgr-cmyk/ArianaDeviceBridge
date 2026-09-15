@@ -488,10 +488,17 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         if (::wakewordButton.isInitialized) wakewordButton.text = wakewordLabel()
     }
 
+    private fun voicePathBusy(): Boolean =
+        conversationActive || voice.isListening() || voice.isSpeaking()
+
     private fun toggleWakeword() {
         if (WakewordStateStore.isEnabled(this)) {
             disableWakeword("button")
             showReply("Wakeword ausgeschaltet.", false)
+            return
+        }
+        if (voicePathBusy()) {
+            showReply("Beende zuerst den laufenden Sprachvorgang.", false)
             return
         }
         if (!api.isMasterEnabled() || api.isBlocked()) {
@@ -510,6 +517,11 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     }
 
     private fun enableWakewordNow() {
+        if (voicePathBusy()) {
+            showReply("Wakeword startet nach dem laufenden Sprachvorgang noch nicht automatisch.", false)
+            refreshWakewordButton()
+            return
+        }
         WakewordStateStore.setEnabled(this, true)
         ArianaWakewordService.start(this)
         refreshWakewordButton()

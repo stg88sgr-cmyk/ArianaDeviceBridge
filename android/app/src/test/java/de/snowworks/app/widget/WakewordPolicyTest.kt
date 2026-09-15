@@ -10,7 +10,11 @@ class WakewordPolicyTest {
     }
 
     @Test fun colloquialPhraseMatches() {
-        assertTrue(WakewordPolicy.matches("Ariana red mit mir"))
+        assertTrue(WakewordPolicy.matches("Hey Ariana, red mit mir bitte"))
+    }
+
+    @Test fun spacingAndPunctuationNormalize() {
+        assertTrue(WakewordPolicy.matches("ARIANA ... REDE   MIT   MIR!"))
     }
 
     @Test fun nameAloneDoesNotMatch() {
@@ -19,5 +23,13 @@ class WakewordPolicyTest {
 
     @Test fun phraseWithoutNameDoesNotMatch() {
         assertFalse(WakewordPolicy.matches("rede mit mir"))
+    }
+
+    @Test fun miriamDoesNotFalseTrigger() {
+        assertFalse(WakewordPolicy.matches("Ariana, rede mit Miriam"))
+    }
+
+    @Test fun similarNameDoesNotTrigger() {
+        assertFalse(WakewordPolicy.matches("Mariana, rede mit mir"))
     }
 }
