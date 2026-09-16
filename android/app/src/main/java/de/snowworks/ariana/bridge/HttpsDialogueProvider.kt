@@ -20,6 +20,21 @@ class HttpsDialogueProvider(
     private val config: SecureAiProviderStore.Config,
 ) {
     fun generate(text: String): String {
+        val policy = CloudAiPolicy.evaluate(text)
+        val cloudText = when (policy.disposition) {
+            CloudAiPolicy.Disposition.LOCAL_ONLY -> {
+                throw DialogueRouter.ProviderException(
+                    policy.reason ?: "CLOUD_POLICY_LOCAL_ONLY",
+                )
+            }
+            CloudAiPolicy.Disposition.ALLOW,
+            CloudAiPolicy.Disposition.REDACTED,
+            -> policy.text
+        }
+        if (cloudText.isBlank()) {
+            throw DialogueRouter.ProviderException("CLOUD_POLICY_EMPTY")
+        }
+
         val uri = runCatching { URI(config.endpoint.trim()) }.getOrElse {
             throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID", it)
         }
@@ -69,7 +84,7 @@ class HttpsDialogueProvider(
                                     "Do not claim device actions happened unless the bridge explicitly reports them.",
                             ),
                     )
-                    .put(JSONObject().put("role", "user").put("content", text)),
+                    .put(JSONObject().put("role", "user").put("content", cloudText)),
             )
             .toString()
             .toByteArray(Charsets.UTF_8)

@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
+import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
@@ -16,6 +17,10 @@ class SnowworksApp : Application() {
         // App boot must never crash because an optional subsystem fails.
         runCatching { SessionRegistry.clear() }
             .onFailure { Log.e(TAG, "SessionRegistry.clear failed", it) }
+
+        // Multi-AI command routing needs only an application-scoped context.
+        runCatching { DialogueRouter.initialize(this) }
+            .onFailure { Log.e(TAG, "DialogueRouter.initialize failed", it) }
 
         // Thermal safety starts before bridge/provider activation so a hot device
         // cannot start heavyweight local work during process boot.

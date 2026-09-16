@@ -149,7 +149,10 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             startActivity(Intent(this, DeviceGrantsActivity::class.java))
         }))
         root.addView(row(
-            button("SETTINGS") { requestSettings() },
+            button("AI SETTINGS") {
+                X88EventJournal.add("open_ai_provider_settings")
+                startActivity(Intent(this, AiProviderSettingsActivity::class.java))
+            },
             button("HEALTH") {
                 X88EventJournal.add("open_health")
                 startActivity(Intent(this, X88HealthActivity::class.java))
