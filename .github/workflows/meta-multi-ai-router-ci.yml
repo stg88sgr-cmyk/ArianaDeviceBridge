@@ -39,6 +39,8 @@ jobs:
           set -euo pipefail
           router='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiRouter.kt'
           judge='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiJudge.kt'
+          repair='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiRepairLoop.kt'
+          repair_test='android/app/src/test/java/de/snowworks/ariana/bridge/MultiAiRepairLoopTest.kt'
           health='android/app/src/main/java/de/snowworks/ariana/bridge/AiProviderHealth.kt'
           store='android/app/src/main/java/de/snowworks/ariana/bridge/SecureAiProviderStore.kt'
           manager='android/app/src/main/java/de/snowworks/ariana/bridge/AiProviderManager.kt'
@@ -48,12 +50,15 @@ jobs:
 
           test -f "$router"
           test -f "$judge"
+          test -f "$repair"
+          test -f "$repair_test"
           test -f "$health"
           grep -F 'enum class Mode' "$router"
           grep -F 'Mode.META' "$router"
           grep -F 'Mode.PARALLEL' "$router"
           grep -F 'Mode.REVIEW' "$router"
           grep -F 'Mode.CONSENSUS' "$router"
+          grep -F 'Mode.REPAIR' "$router"
           grep -F 'SecureAiProviderStore' "$router"
           grep -F 'HttpsDialogueProvider' "$router"
           grep -F 'remoteProviderIsPrimary' "$router"
@@ -61,12 +66,21 @@ jobs:
           grep -F 'MultiAiJudge.decide' "$router"
           grep -F 'AiProviderHealth.acquireAttempt' "$router"
           grep -F 'META_CIRCUIT_OPEN' "$router"
+          grep -F 'MultiAiRepairLoop.MAX_ROUNDS' "$router"
+          grep -F 'REVIEW_UNAVAILABLE' "$router"
 
           grep -F 'enum class Verdict' "$judge"
           grep -F 'PRIMARY' "$judge"
           grep -F 'META' "$judge"
           grep -F 'MERGE' "$judge"
           grep -F 'Sicherheit/Datenschutz' "$judge"
+
+          grep -F 'const val MAX_ROUNDS = 2' "$repair"
+          grep -F 'enum class Status' "$repair"
+          grep -F 'STATUS: PASS|FIX' "$repair"
+          grep -F 'Keine Aktionen ausfuehren' "$repair"
+          grep -F 'rejectsFixWithoutCandidate' "$repair_test"
+          grep -F 'promptsStayBounded' "$repair_test"
 
           grep -F 'FAILURE_THRESHOLD = 3' "$health"
           grep -F 'COOLDOWN_MS = 60_000L' "$health"
@@ -84,6 +98,7 @@ jobs:
           grep -F '"/parallel"' "$dialogue"
           grep -F '"/review"' "$dialogue"
           grep -F '"/consensus"' "$dialogue"
+          grep -F '"/repair"' "$dialogue"
           grep -F 'DialogueRouter.initialize(this)' "$app"
           grep -F 'https://api.meta.ai/v1/chat/completions' "$settings"
           grep -F 'muse-spark-1.3' "$settings"
