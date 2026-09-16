@@ -74,9 +74,11 @@ object AiProviderQualityAssessment {
             if (executionDelta <= WATCH_EXECUTION_DOWN_POINTS) add("EXECUTION_RATE_DOWN")
         }
         val level = when {
-            errorDelta >= DEGRADED_ERROR_UP_POINTS ||
-                circuitDelta >= DEGRADED_CIRCUIT_UP_POINTS ||
-                executionDelta <= DEGRADED_EXECUTION_DOWN_POINTS -> Level.DEGRADED
+            // The exact degraded boundary remains WATCH. Escalation happens only
+            // after the diagnostic signal has crossed the degraded threshold.
+            errorDelta > DEGRADED_ERROR_UP_POINTS ||
+                circuitDelta > DEGRADED_CIRCUIT_UP_POINTS ||
+                executionDelta < DEGRADED_EXECUTION_DOWN_POINTS -> Level.DEGRADED
             reasons.isNotEmpty() -> Level.WATCH
             else -> Level.STABLE
         }
