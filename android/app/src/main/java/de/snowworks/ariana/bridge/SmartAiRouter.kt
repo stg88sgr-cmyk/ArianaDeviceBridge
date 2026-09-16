@@ -84,7 +84,7 @@ object SmartAiRouter {
     }
 
     private fun callLocal(text: String, taskClass: TaskClass, fallback: Boolean = false): Result {
-        val outcome = DialogueRouter.generate(text)
+        val outcome = DialogueRouter.generateActiveProvider(text)
         return Result(
             ok = outcome.ok,
             taskClass = taskClass,
