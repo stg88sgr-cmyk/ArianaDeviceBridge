@@ -3,6 +3,7 @@ package de.snowworks.ariana.apk
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import java.io.File
@@ -23,6 +24,7 @@ class ApkManager(
 
     fun listDownloadedApks(limit: Int = 25): List<DownloadCandidate> {
         if (!stateStore.apkManagerEnabled || !stateStore.watchDownloads) return emptyList()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
 
         val projection = arrayOf(
             MediaStore.Downloads._ID,
