@@ -49,6 +49,10 @@ object XSpaceGatewayClient {
 
     fun snapshot(): Snapshot = snapshot
 
+    internal fun isValidSpaceUrl(value: String): Boolean = spaceUrlPattern.matches(value.trim())
+
+    internal fun normalizeSpeakText(text: String): String = text.trim().take(2000)
+
     fun addListener(listener: EventListener) {
         listeners += listener
     }
@@ -84,7 +88,7 @@ object XSpaceGatewayClient {
 
     fun join(spaceUrl: String): Boolean {
         val normalized = spaceUrl.trim()
-        if (!spaceUrlPattern.matches(normalized)) {
+        if (!isValidSpaceUrl(normalized)) {
             snapshot = snapshot.copy(lastError = "INVALID_X_SPACE_URL")
             return false
         }
@@ -96,7 +100,7 @@ object XSpaceGatewayClient {
     fun leave(): Boolean = send(JSONObject().put("type", "leave"))
 
     fun speak(text: String): Boolean {
-        val safe = text.trim().take(2000)
+        val safe = normalizeSpeakText(text)
         if (safe.isEmpty()) return false
         return send(JSONObject().put("type", "speak").put("text", safe))
     }
