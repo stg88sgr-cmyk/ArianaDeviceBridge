@@ -6,8 +6,9 @@ import de.snowworks.ariana.ArianaGate
 /**
  * Classifies proposed device actions without executing them.
  *
- * CONFIRM decisions are additionally registered in the volatile local approval
- * store so the user can review them on-device. No device action is started here.
+ * Authority is derived from ActionDescriptorRegistry. Callers cannot choose
+ * confirmation level or capabilities. CONFIRM decisions are registered in the
+ * volatile local approval store so the user can review them on-device.
  */
 object ActionPolicy {
     enum class Decision { SAFE, CONFIRM, BLOCKED }
@@ -22,36 +23,6 @@ object ActionPolicy {
 
     private val actionPattern = Regex("^[a-z][a-z0-9_]{0,79}$")
 
-    private val safe = setOf(
-        "get_device_status",
-        "get_permission_status",
-        "get_active_sessions",
-        "camera_stop",
-        "microphone_stop",
-        "screen_stop",
-        "stop_all",
-        "presence_clear",
-        "apk_status",
-        "apk_list",
-        "apk_inspect_latest",
-    )
-
-    private val confirm = setOf(
-        "open_settings",
-        "camera_start",
-        "microphone_start",
-        "screen_start",
-        "camera_snapshot",
-        "notification_list",
-        "notification_clear",
-        "presence_thinking",
-        "presence_done",
-        "presence_attention",
-        "presence_quiet",
-        "presence_test",
-        "apk_install_latest",
-    )
-
     fun evaluate(context: Context, rawAction: String): Evaluation {
         val action = rawAction.trim().lowercase()
         if (!actionPattern.matches(action)) {
@@ -62,8 +33,17 @@ object ActionPolicy {
             )
         }
 
+        val descriptor = ActionDescriptorRegistry.find(action)
+            ?: return Evaluation(
+                action = action,
+                decision = Decision.BLOCKED,
+                reason = "ACTION_NOT_ALLOWLISTED",
+            )
+
         val gate = ArianaGate(context.applicationContext)
-        if ((!gate.isMasterEnabled || gate.isBlocked) && action !in safe) {
+        if ((!gate.isMasterEnabled || gate.isBlocked) &&
+            descriptor.confirmation != ConfirmationRequirement.SAFE
+        ) {
             return Evaluation(
                 action = action,
                 decision = Decision.BLOCKED,
@@ -71,13 +51,14 @@ object ActionPolicy {
             )
         }
 
-        return when (action) {
-            in safe -> Evaluation(
+        return when (descriptor.confirmation) {
+            ConfirmationRequirement.SAFE -> Evaluation(
                 action = action,
                 decision = Decision.SAFE,
                 reason = "NON_ESCALATING_OR_STATUS_ACTION",
             )
-            in confirm -> {
+
+            ConfirmationRequirement.CONFIRM -> {
                 val reason = "VISIBLE_USER_CONFIRMATION_REQUIRED"
                 val pending = ActionApprovalStore.createPending(action, reason)
                 Evaluation(
@@ -87,11 +68,6 @@ object ActionPolicy {
                     pendingProposalId = pending.id,
                 )
             }
-            else -> Evaluation(
-                action = action,
-                decision = Decision.BLOCKED,
-                reason = "ACTION_NOT_ALLOWLISTED",
-            )
         }
     }
 }
