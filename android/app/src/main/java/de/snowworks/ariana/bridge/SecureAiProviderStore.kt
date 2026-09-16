@@ -12,7 +12,7 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-/** Stores the whole AI-provider configuration encrypted with Android Keystore AES/GCM. */
+/** Stores the AI-provider configuration encrypted with Android Keystore AES/GCM. */
 class SecureAiProviderStore(context: Context) {
     data class Config(
         val endpoint: String,
@@ -22,17 +22,7 @@ class SecureAiProviderStore(context: Context) {
 
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun load(): Config? {
-        val encrypted = prefs.getString(KEY_CONFIG, null) ?: return null
-        return runCatching {
-            val json = JSONObject(decrypt(encrypted))
-            Config(
-                endpoint = json.getString("endpoint"),
-                model = json.getString("model"),
-                apiKey = json.optString("apiKey", ""),
-            ).also(::validate)
-        }.getOrNull()
-    }
+    fun load(): Config? = loadEncrypted(KEY_CONFIG)
 
     fun save(config: Config) {
         validate(config)
@@ -41,14 +31,52 @@ class SecureAiProviderStore(context: Context) {
             .put("model", config.model.trim())
             .put("apiKey", config.apiKey.trim())
             .toString()
-        prefs.edit().putString(KEY_CONFIG, encrypt(payload)).apply()
+        val encrypted = encrypt(payload)
+        val current = prefs.getString(KEY_CONFIG, null)
+        prefs.edit().apply {
+            if (current != null) putString(KEY_PREVIOUS_CONFIG, current)
+            putString(KEY_CONFIG, encrypted)
+        }.apply()
     }
 
     fun clear() {
-        prefs.edit().remove(KEY_CONFIG).apply()
+        val current = prefs.getString(KEY_CONFIG, null)
+        prefs.edit().apply {
+            if (current != null) putString(KEY_PREVIOUS_CONFIG, current)
+            remove(KEY_CONFIG)
+        }.apply()
     }
 
     fun hasConfig(): Boolean = load() != null
+
+    fun hasRecoverySnapshot(): Boolean = loadEncrypted(KEY_PREVIOUS_CONFIG) != null
+
+    /** Restores the previous encrypted provider configuration and keeps one-step undo when possible. */
+    fun restorePrevious(): Boolean {
+        val previous = prefs.getString(KEY_PREVIOUS_CONFIG, null) ?: return false
+        if (decodeConfig(previous) == null) return false
+        val current = prefs.getString(KEY_CONFIG, null)
+
+        prefs.edit().apply {
+            putString(KEY_CONFIG, previous)
+            if (current == null) remove(KEY_PREVIOUS_CONFIG) else putString(KEY_PREVIOUS_CONFIG, current)
+        }.apply()
+        return true
+    }
+
+    private fun loadEncrypted(key: String): Config? {
+        val encrypted = prefs.getString(key, null) ?: return null
+        return decodeConfig(encrypted)
+    }
+
+    private fun decodeConfig(encrypted: String): Config? = runCatching {
+        val json = JSONObject(decrypt(encrypted))
+        Config(
+            endpoint = json.getString("endpoint"),
+            model = json.getString("model"),
+            apiKey = json.optString("apiKey", ""),
+        ).also(::validate)
+    }.getOrNull()
 
     private fun validate(config: Config) {
         require(config.endpoint.length in 12..512) { "endpoint length" }
@@ -103,6 +131,7 @@ class SecureAiProviderStore(context: Context) {
     companion object {
         private const val PREFS = "x88_ai_provider_security"
         private const val KEY_CONFIG = "config_v1"
+        private const val KEY_PREVIOUS_CONFIG = "config_previous_v1"
         private const val KEY_ALIAS = "x88_ai_provider_key_v1"
         private const val IV_SIZE = 12
         private val IP_LITERAL = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$|^[0-9a-fA-F:]+$")
