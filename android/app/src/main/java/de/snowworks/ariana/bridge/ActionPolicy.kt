@@ -31,6 +31,9 @@ object ActionPolicy {
         "screen_stop",
         "stop_all",
         "presence_clear",
+        "apk_status",
+        "apk_list",
+        "apk_inspect_latest",
     )
 
     private val confirm = setOf(
@@ -46,6 +49,7 @@ object ActionPolicy {
         "presence_attention",
         "presence_quiet",
         "presence_test",
+        "apk_install_latest",
     )
 
     fun evaluate(context: Context, rawAction: String): Evaluation {
