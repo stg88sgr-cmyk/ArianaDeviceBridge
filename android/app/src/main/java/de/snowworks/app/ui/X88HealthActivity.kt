@@ -12,6 +12,7 @@ import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.BridgeSelfTest
@@ -94,6 +95,7 @@ class X88HealthActivity : AppCompatActivity() {
         executor.execute {
             val result = BridgeSelfTest.run(applicationContext)
             val apk = ApkHealthCheck.run(applicationContext)
+            val apkRoutes = ApkBridgeRouteSelfTest.run(applicationContext)
             val report = buildString {
                 appendLine(result.message)
                 appendLine()
@@ -115,6 +117,12 @@ class X88HealthActivity : AppCompatActivity() {
                         else -> "FAIL"
                     }
                     appendLine("A${index + 1}. [$marker] ${check.name}")
+                    appendLine("   ${check.detail}")
+                }
+                appendLine()
+                appendLine(if (apkRoutes.ok) "APK ROUTES · PASS" else "APK ROUTES · FAIL")
+                apkRoutes.checks.forEachIndexed { index, check ->
+                    appendLine("R${index + 1}. [${if (check.ok) "PASS" else "FAIL"}] ${check.name}")
                     appendLine("   ${check.detail}")
                 }
                 appendLine()
