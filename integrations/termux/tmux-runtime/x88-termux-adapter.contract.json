@@ -1,0 +1,35 @@
+{
+  "contract_version": "1.1.0",
+  "project": "ARIANA X-88",
+  "architecture": {
+    "control_plane": "Android app",
+    "transport": "Desktop Commander remote bridge",
+    "execution_plane": "Termux + tmux",
+    "rule": "Android never invokes tmux directly"
+  },
+  "sessions": {
+    "x88-bridge": "persistent bridge host",
+    "x88-build": "Git/Gradle build lane",
+    "luna-worker": "bounded Luna worker lane",
+    "x88-logs": "runtime log lane"
+  },
+  "commands": {
+    "STATUS": "health and session state",
+    "BUILD": "validated Gradle job under HOME",
+    "LOGS": "sanitized pane output",
+    "LUNA_WORKER": ["start", "stop", "restart", "status"],
+    "CONTRACT": "this contract"
+  },
+  "security": {
+    "arbitrary_exec": false,
+    "build_path_scope": "$HOME only",
+    "gradle_task_regex": "^[A-Za-z0-9:_-]{1,80}$",
+    "secret_redaction": true,
+    "mass_stop_requires_force": true
+  },
+  "runtime_files": {
+    "status": "~/.ariana/tmux-runtime-status.json",
+    "jobs": "~/.ariana/jobs/",
+    "logs": "~/.ariana/logs/"
+  }
+}
