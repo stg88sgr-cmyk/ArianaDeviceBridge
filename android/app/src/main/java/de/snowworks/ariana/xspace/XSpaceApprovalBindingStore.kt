@@ -1,7 +1,6 @@
 package de.snowworks.ariana.xspace
 
 import org.json.JSONObject
-import java.security.MessageDigest
 
 /**
  * Binds an X Space confirmation proposal to the exact externally-visible
@@ -63,16 +62,11 @@ object XSpaceApprovalBindingStore {
         bindings.entries.removeAll { it.value.expiresAtMs <= nowMs }
     }
 
-    private fun fingerprint(action: String, payload: JSONObject): String {
-        val canonical = when (action) {
-            "xspace_join" -> "spaceUrl=" + payload.optString("spaceUrl").trim()
-            "xspace_speak" -> "text=" + payload.optString("text").trim().take(2000)
-            "xspace_connect" -> "gatewayToken=" + payload.optString("gatewayToken").trim()
-            "xspace_leave", "xspace_mute", "xspace_unmute" -> ""
-            else -> payload.toString()
-        }
-        val bytes = MessageDigest.getInstance("SHA-256")
-            .digest("$action\n$canonical".toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
+    private fun fingerprint(action: String, payload: JSONObject): String =
+        XSpacePayloadFingerprint.forValues(
+            action = action,
+            spaceUrl = payload.optString("spaceUrl"),
+            text = payload.optString("text"),
+            gatewayToken = payload.optString("gatewayToken"),
+        )
 }
