@@ -1,0 +1,189 @@
+name: Android Build - x88-evolution-g2
+
+on:
+  push:
+    branches: [ x88-evolution-g2 ]
+  pull_request:
+    branches: [ x88-evolution-g2 ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-build-x88-g2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout x88-evolution-g2 revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify Git revision and project structure
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_HEAD_REF=${GITHUB_HEAD_REF:-}"
+          git rev-parse HEAD
+          git log --oneline -5
+          git status --short
+          test -f android/settings.gradle.kts
+          test -f android/build.gradle.kts
+          test -f android/app/build.gradle.kts
+          ls -la android
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK 36 + NDK + CMake + Build-Tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools" \
+            "ndk;27.0.12077973" \
+            "cmake;3.22.1"
+          sdkmanager --list_installed | grep -E "platforms;android-36|build-tools;36.0.0|ndk;27.0.12077973|cmake;3.22.1"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+          cache-disabled: false
+
+      - name: Select Gradle command and verify toolchain
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -f ./gradlew ]]; then
+            chmod +x ./gradlew
+            echo "GRADLE_CMD=./gradlew" >> "$GITHUB_ENV"
+            ./gradlew --version
+          else
+            echo "Gradle wrapper script not present; using setup-gradle provisioned Gradle 8.11.1."
+            echo "GRADLE_CMD=gradle" >> "$GITHUB_ENV"
+            gradle --version
+          fi
+          java -version
+          cat gradle/wrapper/gradle-wrapper.properties
+
+      - name: Verify Gradle project graph
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          $GRADLE_CMD projects --stacktrace
+
+      - name: Check clean checkout state
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --stat
+          git status --short
+          test -z "$(git status --porcelain)" || {
+            echo "::error::Checkout became dirty before tests/build."
+            git status
+            exit 1
+          }
+
+      - name: Run unit tests
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          $GRADLE_CMD :app:testDebugUnitTest --stacktrace
+
+      - name: Run Android lint
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          $GRADLE_CMD :app:lintDebug --stacktrace
+
+      - name: Build assembleDebug
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          $GRADLE_CMD :app:assembleDebug --stacktrace
+
+      - name: Generate build evidence
+        id: evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find android/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+          if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
+            echo "::error::Debug APK not found after successful assembleDebug."
+            exit 1
+          fi
+
+          EVIDENCE_DIR="android/app/build/outputs/apk/debug"
+          CANONICAL_APK="$EVIDENCE_DIR/app-debug.apk"
+          if [[ "$APK_PATH" != "$CANONICAL_APK" ]]; then
+            cp "$APK_PATH" "$CANONICAL_APK"
+          fi
+
+          SHA="$(sha256sum "$CANONICAL_APK" | awk '{print $1}')"
+          printf '%s  %s\n' "$SHA" "app-debug.apk" > "$CANONICAL_APK.sha256"
+
+          echo "APK found: $CANONICAL_APK"
+          ls -lh "$CANONICAL_APK" "$CANONICAL_APK.sha256"
+          cat "$CANONICAL_APK.sha256"
+          echo "apk_path=$CANONICAL_APK" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Verify SHA-256 evidence
+        working-directory: android/app/build/outputs/apk/debug
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check app-debug.apk.sha256
+
+      - name: Upload APK + SHA256 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x88-evolution-g2-debug-apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Build summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### X-88 G2 Android CI"
+            echo "- Result: ${{ job.status }}"
+            echo "- Branch/ref: ${{ github.ref }}"
+            echo "- Commit: ${{ github.sha }}"
+            echo "- Java: 17 (Temurin)"
+            echo "- Gradle: 8.11.1"
+            echo "- Android SDK: 36"
+            echo "- NDK: 27.0.12077973"
+            echo "- CMake: 3.22.1"
+            echo "- APK: ${{ steps.evidence.outputs.apk_path }}"
+            echo "- SHA256: ${{ steps.evidence.outputs.sha256 }}"
+          } >> "$GITHUB_STEP_SUMMARY"
