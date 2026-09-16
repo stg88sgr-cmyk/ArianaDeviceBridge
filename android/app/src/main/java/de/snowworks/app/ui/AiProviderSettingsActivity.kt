@@ -13,13 +13,18 @@ import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.SecureAiProviderStore
+import java.util.concurrent.Executors
 
 class AiProviderSettingsActivity : AppCompatActivity() {
     private lateinit var endpointInput: EditText
     private lateinit var modelInput: EditText
     private lateinit var apiKeyInput: EditText
     private lateinit var statusView: TextView
+    private lateinit var testButton: MaterialButton
     private var currentKey: String = ""
+    private val probeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "ArianaProviderProbe").apply { isDaemon = true }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -30,6 +35,11 @@ class AiProviderSettingsActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refreshStatus()
+    }
+
+    override fun onDestroy() {
+        probeExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     private fun buildUi(): ScrollView {
@@ -46,7 +56,7 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         root.addView(label("HTTPS-Provider", 28f, Color.parseColor("#E9EEF1")))
         root.addView(
             label(
-                "OpenAI-kompatibler Chat-Completions-Endpunkt. Verbindung entsteht erst bei einer Dialoganfrage.",
+                "OpenAI-kompatibler Chat-Completions-Endpunkt. Verbindung entsteht erst bei einer Dialoganfrage oder einem manuellen Verbindungstest.",
                 14f,
                 Color.parseColor("#AAB8C2"),
             ),
@@ -99,6 +109,18 @@ class AiProviderSettingsActivity : AppCompatActivity() {
                 text = "Speichern und aktivieren"
                 setOnClickListener { saveAndActivate() }
             },
+        )
+        testButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Gespeicherte Meta-Verbindung testen"
+            setOnClickListener { testConfiguredProvider() }
+        }
+        root.addView(testButton)
+        root.addView(
+            label(
+                "Der Test nutzt nur die bereits verschlüsselt gespeicherte Konfiguration. Er wechselt Arianas aktiven lokalen Provider nicht und speichert die Testantwort nicht.",
+                12f,
+                Color.parseColor("#8FA4AF"),
+            ),
         )
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -175,8 +197,29 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         }
         currentKey = key
         apiKeyInput.setText("")
-        toast("KI-Provider registriert. Netzwerk wird erst beim Dialog genutzt.")
+        toast("KI-Provider registriert. Netzwerk wird erst beim Dialog oder Verbindungstest genutzt.")
         refreshStatus()
+    }
+
+    private fun testConfiguredProvider() {
+        if (!::testButton.isInitialized || !testButton.isEnabled) return
+        testButton.isEnabled = false
+        testButton.text = "Meta-Verbindung wird getestet …"
+        probeExecutor.submit {
+            val result = AiProviderManager.testConfigured(applicationContext)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                testButton.isEnabled = true
+                testButton.text = "Gespeicherte Meta-Verbindung testen"
+                if (result.ok) {
+                    val preview = result.replyPreview?.takeIf { it.isNotBlank() } ?: "Antwort erhalten"
+                    toast("Meta-Verbindung OK · ${result.model ?: "Modell"} · $preview")
+                } else {
+                    toast("Meta-Test fehlgeschlagen: ${result.error ?: "PROVIDER_PROBE_FAILED"}")
+                }
+                refreshStatus()
+            }
+        }
     }
 
     private fun restorePrevious() {
