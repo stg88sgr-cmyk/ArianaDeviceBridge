@@ -88,16 +88,21 @@ jobs:
         run: |
           set -euo pipefail
           policy_file='android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+          registry_file='android/app/src/main/java/de/snowworks/ariana/bridge/ActionDescriptorRegistry.kt'
           server_file='android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt'
           test_file='android/app/src/main/java/de/snowworks/ariana/bridge/BridgeSelfTest.kt'
 
           grep -F 'enum class Decision { SAFE, CONFIRM, BLOCKED }' "$policy_file"
           grep -F 'val executable: Boolean = false' "$policy_file"
-          grep -F '"camera_start"' "$policy_file"
+          grep -F 'ActionDescriptorRegistry.find(action)' "$policy_file"
           grep -F 'decision = Decision.CONFIRM' "$policy_file"
           grep -F 'reason = "ACTION_NOT_ALLOWLISTED"' "$policy_file"
           ! grep -F 'ArianaCaptureService' "$policy_file"
           ! grep -F 'CameraFrameStore' "$policy_file"
+
+          grep -F 'ActionDescriptor("camera_start", ConfirmationRequirement.CONFIRM' "$registry_file"
+          grep -F 'ActionDescriptor("microphone_start", ConfirmationRequirement.CONFIRM' "$registry_file"
+          grep -F 'ActionDescriptor("get_device_status", ConfirmationRequirement.SAFE)' "$registry_file"
 
           grep -F 'path == "/v1/action/proposal" && method == "POST"' "$server_file"
           grep -F 'private fun actionProposal' "$server_file"
@@ -155,6 +160,14 @@ jobs:
           grep -F 'Noch nichts ausgeführt' "$ui_file"
           grep -F 'ActionApprovalStore.revokeAll()' "$ui_file"
 
+      - name: Unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Lint
+        working-directory: android
+        run: gradle :app:lintDebug --stacktrace
+
       - name: Assemble debug APK
         working-directory: android
         env:
@@ -172,6 +185,13 @@ jobs:
           "$APKSIGNER" verify --print-certs "$APK" | tee android/app/build/outputs/apk/debug/signing-certificate.txt
           echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/debug/signing-certificate.txt
 
+      - name: Report APK SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          sha256sum "$APK" | tee android/app/build/outputs/apk/debug/apk-sha256.txt
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -179,4 +199,5 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/outputs/apk/debug/signing-certificate.txt
+            android/app/build/outputs/apk/debug/apk-sha256.txt
           if-no-files-found: error
