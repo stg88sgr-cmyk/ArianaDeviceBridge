@@ -47,16 +47,15 @@ object AiProviderHealth {
 
     @Synchronized
     fun recordFailure(providerId: String, errorCode: String, nowMs: Long = monotonicNowMs()) {
-        val state = states.getOrPut(providerId) { State() }
-        state.lastError = errorCode
-
         if (!isTransient(errorCode)) {
-            state.halfOpenProbeInFlight = false
+            states.remove(providerId)
             return
         }
 
+        val state = states.getOrPut(providerId) { State() }
         val failedHalfOpenProbe = state.halfOpenProbeInFlight
         state.halfOpenProbeInFlight = false
+        state.lastError = errorCode
         state.consecutiveFailures += 1
 
         if (failedHalfOpenProbe || state.consecutiveFailures >= FAILURE_THRESHOLD) {
