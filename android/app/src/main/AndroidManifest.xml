@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -35,43 +36,14 @@
         <uses-native-library android:name="libOpenCL-car.so" android:required="false" />
         <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
 
-        <activity
-            android:name=".ui.LocalModelSettingsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.AiProviderSettingsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.VoiceTestActivity"
-            android:exported="false"
-            android:label="Ariana Voice" />
-
-        <activity
-            android:name=".ui.X88HealthActivity"
-            android:exported="false"
-            android:label="ARIANA X-88 Health" />
-
-        <activity
-            android:name=".ui.X88AuditActivity"
-            android:exported="false"
-            android:label="ARIANA X-88 Audit" />
-
-        <activity
-            android:name=".ui.X88CharacterActivity"
-            android:exported="false"
-            android:label="ARIANA X-88 Character" />
-
-        <activity
-            android:name=".ui.X88CharacterGenerateActivity"
-            android:exported="false"
-            android:label="ARIANA X-88 Generate" />
-
-        <activity
-            android:name=".ui.X88CharacterGalleryActivity"
-            android:exported="false"
-            android:label="ARIANA X-88 Gallery" />
+        <activity android:name=".ui.LocalModelSettingsActivity" android:exported="false" />
+        <activity android:name=".ui.AiProviderSettingsActivity" android:exported="false" />
+        <activity android:name=".ui.VoiceTestActivity" android:exported="false" android:label="Ariana Voice" />
+        <activity android:name=".ui.X88HealthActivity" android:exported="false" android:label="ARIANA X-88 Health" />
+        <activity android:name=".ui.X88AuditActivity" android:exported="false" android:label="ARIANA X-88 Audit" />
+        <activity android:name=".ui.X88CharacterActivity" android:exported="false" android:label="ARIANA X-88 Character" />
+        <activity android:name=".ui.X88CharacterGenerateActivity" android:exported="false" android:label="ARIANA X-88 Generate" />
+        <activity android:name=".ui.X88CharacterGalleryActivity" android:exported="false" android:label="ARIANA X-88 Gallery" />
 
         <activity
             android:name=".ui.X88HomeActivity"
@@ -84,10 +56,11 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.DeviceGrantsActivity"
-            android:exported="false"
-            android:launchMode="singleTop" />
+        <activity android:name=".ui.DeviceGrantsActivity" android:exported="false" android:launchMode="singleTop" />
+
+        <receiver
+            android:name="de.snowworks.ariana.apk.ApkInstallReceiver"
+            android:exported="false" />
 
         <receiver
             android:name=".widget.ArianaPresenceWidgetProvider"
@@ -96,9 +69,7 @@
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/ariana_presence_widget_info" />
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/ariana_presence_widget_info" />
         </receiver>
 
         <service
