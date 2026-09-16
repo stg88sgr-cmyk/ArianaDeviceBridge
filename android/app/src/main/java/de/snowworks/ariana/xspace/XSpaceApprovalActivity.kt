@@ -22,6 +22,8 @@ class XSpaceApprovalActivity : AppCompatActivity() {
             return
         }
 
+        XSpaceApprovalNotifier.cancel(this, proposalId)
+
         val api = ArianaDeviceApi(this)
         val review = api.pendingXSpaceApprovals().firstOrNull { it.proposalId == proposalId }
         if (review == null) {
@@ -58,7 +60,11 @@ class XSpaceApprovalActivity : AppCompatActivity() {
                 ).show()
                 finish()
             }
-            .setOnCancelListener { finish() }
+            .setOnCancelListener {
+                val current = api.pendingXSpaceApprovals().firstOrNull { it.proposalId == proposalId }
+                if (current != null) XSpaceApprovalNotifier.post(this, current)
+                finish()
+            }
             .show()
     }
 
