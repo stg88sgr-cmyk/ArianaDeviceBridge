@@ -40,6 +40,7 @@
         <activity android:name=".ui.AiProviderSettingsActivity" android:exported="false" />
         <activity android:name=".ui.VoiceTestActivity" android:exported="false" android:label="Ariana Voice" />
         <activity android:name=".ui.X88HealthActivity" android:exported="false" android:label="ARIANA X-88 Health" />
+        <activity android:name=".ui.ApkStatusActivity" android:exported="false" android:label="ARIANA APK Manager" />
         <activity android:name=".ui.X88AuditActivity" android:exported="false" android:label="ARIANA X-88 Audit" />
         <activity android:name=".ui.X88CharacterActivity" android:exported="false" android:label="ARIANA X-88 Character" />
         <activity android:name=".ui.X88CharacterGenerateActivity" android:exported="false" android:label="ARIANA X-88 Generate" />
