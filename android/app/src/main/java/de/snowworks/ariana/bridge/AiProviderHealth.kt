@@ -1,11 +1,17 @@
 package de.snowworks.ariana.bridge
 
+import android.content.Context
+
 /**
- * Small in-process circuit breaker for remote AI providers.
+ * Small circuit breaker for remote AI providers.
  *
  * Only transient transport/upstream failures count against health. Configuration,
  * authentication and request-validation errors stay visible but do not poison
  * provider health. After the cooldown, exactly one half-open probe is allowed.
+ *
+ * Recovery metadata is persisted after initialize(context), so process death does
+ * not erase failure counters or an active cooldown. Half-open in-flight state is
+ * intentionally never persisted because no network request survives process death.
  */
 object AiProviderHealth {
     const val FAILURE_THRESHOLD = 3
@@ -30,6 +36,30 @@ object AiProviderHealth {
     )
 
     private val states = linkedMapOf<String, State>()
+    @Volatile private var persistence: AiProviderHealthPersistence? = null
+
+    @Synchronized
+    fun initialize(context: Context) {
+        val store = AiProviderHealthPersistence(context.applicationContext)
+        persistence = store
+        states.clear()
+        val monotonicNow = monotonicNowMs()
+        val wallNow = System.currentTimeMillis()
+        store.loadAll().forEach { record ->
+            val remaining = (record.wallOpenUntilMs - wallNow).coerceAtLeast(0L)
+            val restoredOpenUntil = when {
+                record.wallOpenUntilMs <= 0L -> 0L
+                remaining > 0L -> monotonicNow + remaining
+                else -> monotonicNow
+            }
+            states[record.providerId] = State(
+                consecutiveFailures = record.consecutiveFailures,
+                openUntilMs = restoredOpenUntil,
+                halfOpenProbeInFlight = false,
+                lastError = record.lastError,
+            )
+        }
+    }
 
     @Synchronized
     fun acquireAttempt(providerId: String, nowMs: Long = monotonicNowMs()): Boolean {
@@ -45,12 +75,14 @@ object AiProviderHealth {
     @Synchronized
     fun recordSuccess(providerId: String) {
         states.remove(providerId)
+        persistence?.remove(providerId)
     }
 
     @Synchronized
     fun recordFailure(providerId: String, errorCode: String, nowMs: Long = monotonicNowMs()) {
         if (!isTransient(errorCode)) {
             states.remove(providerId)
+            persistence?.remove(providerId)
             return
         }
 
@@ -64,6 +96,7 @@ object AiProviderHealth {
             state.openUntilMs = nowMs + COOLDOWN_MS
             state.consecutiveFailures = maxOf(state.consecutiveFailures, FAILURE_THRESHOLD)
         }
+        persist(providerId, state, nowMs)
     }
 
     @Synchronized
@@ -85,7 +118,13 @@ object AiProviderHealth {
 
     @Synchronized
     fun reset(providerId: String? = null) {
-        if (providerId == null) states.clear() else states.remove(providerId)
+        if (providerId == null) {
+            states.clear()
+            persistence?.clear()
+        } else {
+            states.remove(providerId)
+            persistence?.remove(providerId)
+        }
     }
 
     internal fun isTransient(errorCode: String): Boolean = errorCode in setOf(
@@ -100,6 +139,20 @@ object AiProviderHealth {
         "META_PROVIDER_FAILED",
         "CLAUDE_PROVIDER_FAILED",
     )
+
+    private fun persist(providerId: String, state: State, nowMs: Long) {
+        val store = persistence ?: return
+        val remaining = (state.openUntilMs - nowMs).coerceAtLeast(0L)
+        val wallOpenUntil = if (state.openUntilMs > 0L) System.currentTimeMillis() + remaining else 0L
+        store.save(
+            AiProviderHealthPersistence.Record(
+                providerId = providerId,
+                consecutiveFailures = state.consecutiveFailures,
+                wallOpenUntilMs = wallOpenUntil,
+                lastError = state.lastError,
+            ),
+        )
+    }
 
     private fun monotonicNowMs(): Long = System.nanoTime() / 1_000_000L
 }
