@@ -324,11 +324,24 @@ class ArianaCaptureService : Service() {
 
     private fun stopMicrophone() {
         micRunning.set(false)
-        runCatching { audioRecord?.stop() }
-        audioThread?.join(300)
-        audioThread = null
-        audioRecord?.release()
+
+        // Detach the shared references first so the worker loop cannot pick the
+        // recorder up again while shutdown is in progress.
+        val record = audioRecord
+        val thread = audioThread
         audioRecord = null
+        audioThread = null
+
+        runCatching {
+            if (record?.recordingState == AudioRecord.RECORDSTATE_RECORDING) record.stop()
+        }
+        // release() also unblocks a device/driver read that did not return from
+        // stop() quickly enough on some Android builds.
+        runCatching { record?.release() }
+        if (thread != null && thread !== Thread.currentThread()) {
+            runCatching { thread.join(500L) }
+        }
+
         pendingCapture.remove(Feature.MICROPHONE)
         SessionRegistry.markActive(Feature.MICROPHONE, false)
     }
