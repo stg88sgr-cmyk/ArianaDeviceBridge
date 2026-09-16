@@ -19,6 +19,7 @@ import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.AiRouteStateStore
+import de.snowworks.ariana.bridge.AiRouterMetricsStore
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.CloudProviderRegistry
 import de.snowworks.ariana.files.TreePermissionStore
@@ -27,6 +28,7 @@ import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.thermal.ThermalSafetyController
 import java.text.DateFormat
 import java.util.Date
+import java.util.Locale
 import java.util.concurrent.Executors
 
 /** Local X-88 health/release-gate panel. */
@@ -172,6 +174,7 @@ class X88HealthActivity : AppCompatActivity() {
         val thermal = ThermalSafetyController.currentSnapshot()
         val ai = AiHealthReporter.snapshot(this)
         val routeHistory = AiRouteStateStore.history(this).takeLast(6).asReversed()
+        val metrics = AiRouterMetricsStore.snapshot(this)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -193,6 +196,11 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
             ai.route.fallbackReason?.let { appendLine("Fallback-Ursache: $it") }
             appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
+            appendLine()
+            appendLine("ROUTER METRICS")
+            appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
+            appendLine("Fallbacks: ${metrics.fallbacks} (${formatPercent(metrics.fallbackRatePercent)})")
+            appendLine("Fehler: ${metrics.errors} (${formatPercent(metrics.errorRatePercent)})")
             appendLine()
             appendLine("ROUTER HISTORY")
             if (routeHistory.isEmpty()) {
@@ -254,6 +262,8 @@ class X88HealthActivity : AppCompatActivity() {
         status.lastError?.let { append(" · error=").append(it) }
         append(" · next=").append(formatTime(status.nextEligibleWallMs))
     }
+
+    private fun formatPercent(value: Double): String = String.format(Locale.US, "%.1f%%", value)
 
     private fun formatTime(value: Long): String = if (value > 0L) DateFormat.getDateTimeInstance().format(Date(value)) else "noch keine"
 
