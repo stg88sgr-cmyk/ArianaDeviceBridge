@@ -11,9 +11,11 @@ import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.xspace.XSpaceApprovalRequestStore
+import de.snowworks.ariana.xspace.XSpaceBridgeActionRouter
 import de.snowworks.ariana.xspace.XSpaceConfirmedActionExecutor
 import de.snowworks.ariana.xspace.XSpaceGatewayClient
 import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Internal interface for permission status, start/stop, master, and errors.
@@ -130,6 +132,17 @@ class ArianaDeviceApi(private val context: Context) {
         gate.blockAfterStopAll()
         return ArianaResult.Ok(Unit)
     }
+
+    /** Create a local X Space proposal. CONFIRM actions enter the visible review queue. */
+    fun proposeXSpaceAction(
+        action: String,
+        payload: JSONObject = JSONObject(),
+    ): JSONObject = XSpaceBridgeActionRouter.dispatch(
+        context = context.applicationContext,
+        requestId = UUID.randomUUID().toString(),
+        action = action,
+        payload = payload,
+    )
 
     /** Pending X Space actions are safe, sanitized descriptions for visible UI. */
     fun pendingXSpaceApprovals(): List<XSpaceApprovalRequestStore.ReviewRequest> =
