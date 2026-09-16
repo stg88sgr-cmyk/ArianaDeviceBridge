@@ -102,6 +102,12 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         )
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "Letzten Provider-Stand wiederherstellen"
+                setOnClickListener { restorePrevious() }
+            },
+        )
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
                 text = "Provider entfernen"
                 setOnClickListener {
                     AiProviderManager.clear(this@AiProviderSettingsActivity)
@@ -109,7 +115,7 @@ class AiProviderSettingsActivity : AppCompatActivity() {
                     endpointInput.setText("")
                     modelInput.setText("")
                     apiKeyInput.setText("")
-                    toast("KI-Provider entfernt.")
+                    toast("KI-Provider entfernt. Der vorherige Stand bleibt als Recovery-Snapshot erhalten.")
                     refreshStatus()
                 }
             },
@@ -117,7 +123,7 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         root.addView(
             label(
                 "Sicherheit: HTTPS ist Pflicht. Localhost, IP-Adressen, .local-Ziele und private Netzwerkadressen werden blockiert. " +
-                    "Die komplette Konfiguration wird mit Android Keystore AES/GCM verschlüsselt gespeichert.",
+                    "Konfiguration und letzter Recovery-Stand werden mit Android Keystore AES/GCM verschlüsselt gespeichert.",
                 12f,
                 Color.parseColor("#7F919D"),
             ),
@@ -141,6 +147,10 @@ class AiProviderSettingsActivity : AppCompatActivity() {
             endpointInput.setText(config.endpoint)
             modelInput.setText(config.model)
             currentKey = config.apiKey
+        } else {
+            endpointInput.setText("")
+            modelInput.setText("")
+            currentKey = ""
         }
         apiKeyInput.setText("")
         refreshStatus()
@@ -169,6 +179,19 @@ class AiProviderSettingsActivity : AppCompatActivity() {
         refreshStatus()
     }
 
+    private fun restorePrevious() {
+        val restored = runCatching {
+            AiProviderManager.restorePrevious(this)
+        }.getOrDefault(false)
+        if (!restored) {
+            toast("Kein nutzbarer Recovery-Snapshot vorhanden.")
+            refreshStatus()
+            return
+        }
+        loadCurrent()
+        toast("Letzten Provider-Stand wiederhergestellt.")
+    }
+
     private fun refreshStatus() {
         val status = AiProviderManager.status(this)
         statusView.text = buildString {
@@ -178,6 +201,8 @@ class AiProviderSettingsActivity : AppCompatActivity() {
             status.model?.let { append(" · Modell: $it") }
             append(" · Schlüssel: ")
             append(if (status.apiKeyPresent) "gespeichert" else "nicht gesetzt")
+            append(" · Recovery: ")
+            append(if (status.recoveryAvailable) "vorhanden" else "leer")
         }
     }
 
