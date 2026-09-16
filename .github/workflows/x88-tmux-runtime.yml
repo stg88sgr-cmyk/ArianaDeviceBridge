@@ -1,0 +1,34 @@
+name: X88 tmux Runtime CI
+
+on:
+  pull_request:
+    paths:
+      - 'integrations/termux/tmux-runtime/**'
+      - '.github/workflows/x88-tmux-runtime.yml'
+  push:
+    paths:
+      - 'integrations/termux/tmux-runtime/**'
+      - '.github/workflows/x88-tmux-runtime.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bash syntax
+        run: |
+          bash -n integrations/termux/tmux-runtime/x88-tmux-bootstrap.sh
+          bash -n integrations/termux/tmux-runtime/x88-tmux-status.sh
+          bash -n integrations/termux/tmux-runtime/x88-tmux-stop.sh
+          bash -n integrations/termux/tmux-runtime/x88-adapter.sh
+          bash -n integrations/termux/tmux-runtime/install-x88-tmux-runtime.sh
+      - name: Contract JSON
+        run: python -m json.tool integrations/termux/tmux-runtime/x88-termux-adapter.contract.json >/dev/null
+      - name: Security invariants
+        run: |
+          ! grep -R --line-number -E '\beval\b|LUNA_WORKER.*exec|tmux kill-server' integrations/termux/tmux-runtime
+          grep -q 'arbitrary_exec.*false' integrations/termux/tmux-runtime/x88-termux-adapter.contract.json
+          grep -q 'x88-bridge' integrations/termux/tmux-runtime/x88-tmux-bootstrap.sh
+          grep -q 'x88-build' integrations/termux/tmux-runtime/x88-tmux-bootstrap.sh
+          grep -q 'luna-worker' integrations/termux/tmux-runtime/x88-tmux-bootstrap.sh
+          grep -q 'x88-logs' integrations/termux/tmux-runtime/x88-tmux-bootstrap.sh
