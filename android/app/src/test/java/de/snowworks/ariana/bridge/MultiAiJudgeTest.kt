@@ -22,12 +22,23 @@ class MultiAiJudgeTest {
     }
 
     @Test
+    fun rejectsCopiedVerdictTemplate() {
+        assertNull(
+            MultiAiJudge.parse(
+                "VERDICT: PRIMARY|META|MERGE RATIONALE: copied template FINAL: fallback"
+            )
+        )
+    }
+
+    @Test
     fun judgePromptFitsDialogueLimitAndContainsRubric() {
         val longText = "x".repeat(2_000)
         val prompt = MultiAiJudge.buildPrompt(longText, longText, longText)
         assertTrue(prompt.length <= DialogueRouter.MAX_INPUT_CHARS)
         assertTrue(prompt.contains("Korrektheit"))
         assertTrue(prompt.contains("Sicherheit/Datenschutz"))
-        assertTrue(prompt.contains("VERDICT: PRIMARY|META|MERGE"))
+        assertTrue(prompt.contains("Waehle genau EINE Entscheidung"))
+        assertTrue(prompt.contains("VERDICT:"))
+        assertTrue(!prompt.contains("PRIMARY|META|MERGE"))
     }
 }
