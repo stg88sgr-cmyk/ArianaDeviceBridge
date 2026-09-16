@@ -3,6 +3,7 @@ package de.snowworks.app
 import android.app.Application
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
+import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
@@ -13,6 +14,7 @@ class SnowworksApp : Application() {
         super.onCreate()
         // No device/session restore after process death.
         SessionRegistry.clear()
+        DialogueRouter.initialize(this)
 
         // Restore only the local loopback core when the user-controlled master gate
         // was already enabled and Stop-All has not blocked new actions.
@@ -21,8 +23,8 @@ class SnowworksApp : Application() {
             LocalBridgeServer.start(this)
         }
 
-        // Prefer an explicitly enabled on-device model. Fall back to a previously
-        // configured HTTPS provider only when no local model is active.
+        // Prefer Ariana's local providers. A configured HTTPS provider remains
+        // available as a secondary multi-AI reviewer when local Ariana is active.
         if (!LoopbackArianaProviderManager.activateIfAvailable() &&
             !LocalAiProviderManager.activateConfigured(this)
         ) {
