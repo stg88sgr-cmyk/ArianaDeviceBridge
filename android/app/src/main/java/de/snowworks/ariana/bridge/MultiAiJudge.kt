@@ -26,17 +26,22 @@ object MultiAiJudge {
     internal data class ParsedDecision(val verdict: Verdict, val rationale: String, val finalReply: String)
 
     internal fun buildPrompt(task: String, primaryReply: String, metaReply: String): String = buildString {
-        append("JUDGE: Vergleiche zwei technische Antworten ohne Loyalitaet zu einem Provider. ")
-        append("Bewerte Korrektheit, pruefbare Tests/Belege, Anforderungsabdeckung, Sicherheit/Datenschutz ")
-        append("und vermeide unnoetige Komplexitaet. Waehle MERGE nur wenn beide wertvolle Teile liefern. ")
-        append("Aufgabe: ").append(clean(task).take(180))
-        append(" PRIMARY: ").append(clean(primaryReply).take(280))
-        append(" META: ").append(clean(metaReply).take(280))
-        append(" Ausgabe exakt: VERDICT: PRIMARY|META|MERGE RATIONALE: <kurz> FINAL: <beste vollstaendige Antwort>")
+        append("JUDGE: Vergleiche zwei Antworten neutral nach Korrektheit, Belegen, Anforderungsabdeckung, Sicherheit/Datenschutz und Einfachheit. ")
+        append("Waehle genau EINE Entscheidung: PRIMARY oder META oder MERGE. Kopiere niemals die Liste der Optionen. ")
+        append("MERGE nur, wenn beide Antworten wertvolle unterschiedliche Teile beitragen. ")
+        append("Aufgabe: ").append(clean(task).take(160))
+        append(" PRIMARY: ").append(clean(primaryReply).take(240))
+        append(" META: ").append(clean(metaReply).take(240))
+        append(" Antworte exakt in drei kurzen Zeilen. Zeile 1: VERDICT: und genau ein Wort. ")
+        append("Zeile 2: RATIONALE: maximal 20 Woerter. Zeile 3: FINAL: maximal 60 Woerter.")
     }.take(DialogueRouter.MAX_INPUT_CHARS)
 
     internal fun parse(raw: String): ParsedDecision? {
         val text = clean(raw)
+        if (Regex("VERDICT\\s*:\\s*PRIMARY\\s*\\|", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+        if (Regex("VERDICT\\s*:\\s*META\\s*\\|", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+        if (Regex("VERDICT\\s*:\\s*MERGE\\s*\\|", RegexOption.IGNORE_CASE).containsMatchIn(text)) return null
+
         val verdictMatch = Regex("VERDICT\\s*:\\s*(PRIMARY|META|MERGE)\\b", RegexOption.IGNORE_CASE).find(text) ?: return null
         val rationaleMatch = Regex("RATIONALE\\s*:\\s*(.*?)\\s+FINAL\\s*:", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).find(text) ?: return null
         val finalMatch = Regex("FINAL\\s*:\\s*(.+)$", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)).find(text) ?: return null
@@ -47,5 +52,8 @@ object MultiAiJudge {
         return ParsedDecision(verdict, rationale, finalReply)
     }
 
-    private fun clean(raw: String): String = raw.replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ").replace(Regex("\\s+"), " ").trim()
+    private fun clean(raw: String): String = raw
+        .replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
 }
