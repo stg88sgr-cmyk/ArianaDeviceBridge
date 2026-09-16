@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 40
-        versionName = "1.14.0-rc4"
+        versionCode = 41
+        versionName = "1.14.1-rc1"
     }
 
     signingConfigs {
@@ -42,9 +42,7 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             buildConfigField("boolean", "BOOTSTRAP", "false")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("sideload") {
             initWith(getByName("debug"))
@@ -52,9 +50,7 @@ android {
             versionNameSuffix = "-sideload"
             buildConfigField("boolean", "BOOTSTRAP", "false")
             matchingFallbacks += listOf("debug")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("bootstrap") {
             initWith(getByName("debug"))
@@ -62,16 +58,12 @@ android {
             versionNameSuffix = "-bootstrap"
             buildConfigField("boolean", "BOOTSTRAP", "true")
             matchingFallbacks += listOf("debug")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         release {
             isMinifyEnabled = true
             buildConfigField("boolean", "BOOTSTRAP", "false")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -79,13 +71,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        viewBinding = false
-        buildConfig = true
-    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { viewBinding = false; buildConfig = true }
 }
 
 dependencies {
@@ -96,6 +83,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
-
     testImplementation("junit:junit:4.13.2")
 }
