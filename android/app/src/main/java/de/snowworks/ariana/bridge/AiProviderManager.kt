@@ -15,6 +15,14 @@ object AiProviderManager {
         val recoveryAvailable: Boolean,
     )
 
+    data class ProbeResult(
+        val ok: Boolean,
+        val providerHost: String? = null,
+        val model: String? = null,
+        val replyPreview: String? = null,
+        val error: String? = null,
+    )
+
     @Synchronized
     fun activateConfigured(context: Context): Boolean {
         val config = SecureAiProviderStore(context).load() ?: run {
@@ -77,6 +85,54 @@ object AiProviderManager {
         if (!restored) return false
         AiProviderHealth.reset()
         return activateConfigured(context)
+    }
+
+    /**
+     * Performs one minimal live request with the encrypted, already-saved config.
+     * It does not switch providers, persist the reply, or expose the API key.
+     */
+    fun testConfigured(context: Context): ProbeResult {
+        val config = SecureAiProviderStore(context.applicationContext).load()
+            ?: return ProbeResult(ok = false, error = "PROVIDER_NOT_CONFIGURED")
+        if (config.apiKey.isBlank()) {
+            return ProbeResult(ok = false, error = "PROVIDER_KEY_MISSING")
+        }
+
+        val host = runCatching { URI(config.endpoint).host }.getOrNull()
+        if (host.isNullOrBlank()) {
+            return ProbeResult(ok = false, model = config.model, error = "PROVIDER_CONFIG_INVALID")
+        }
+
+        return try {
+            val reply = HttpsDialogueProvider(config).generate(
+                "Connectivity smoke test for Ariana X-88. Reply briefly with META_SMOKE_OK.",
+            )
+            ProbeResult(
+                ok = reply.isNotBlank(),
+                providerHost = host,
+                model = config.model,
+                replyPreview = reply
+                    .replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ")
+                    .replace(Regex("\\s+"), " ")
+                    .trim()
+                    .take(120),
+                error = if (reply.isBlank()) "PROVIDER_EMPTY_REPLY" else null,
+            )
+        } catch (error: DialogueRouter.ProviderException) {
+            ProbeResult(
+                ok = false,
+                providerHost = host,
+                model = config.model,
+                error = error.code,
+            )
+        } catch (_: Exception) {
+            ProbeResult(
+                ok = false,
+                providerHost = host,
+                model = config.model,
+                error = "PROVIDER_PROBE_FAILED",
+            )
+        }
     }
 
     fun status(context: Context): Status {
