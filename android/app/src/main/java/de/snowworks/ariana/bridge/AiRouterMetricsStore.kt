@@ -45,6 +45,7 @@ object AiRouterMetricsStore {
             .putLong(KEY_FALLBACKS, prefs.getLong(KEY_FALLBACKS, 0L) + if (result.fallbackUsed) 1L else 0L)
             .putLong(KEY_ERRORS, prefs.getLong(KEY_ERRORS, 0L) + if (!result.ok) 1L else 0L)
             .apply()
+        AiRouterTrendStore.record(app, result)
     }
 
     fun snapshot(context: Context): Snapshot {
