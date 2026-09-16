@@ -28,6 +28,7 @@ object AiProviderManager {
             if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) DialogueRouter.unregister()
             return false
         }
+        CloudProviderRegistry(context).remember(config)
         val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
         if (host.isBlank()) {
             if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) DialogueRouter.unregister()
@@ -42,6 +43,7 @@ object AiProviderManager {
     fun configure(context: Context, endpoint: String, model: String, apiKey: String): Boolean {
         val config = SecureAiProviderStore.Config(endpoint.trim(), model.trim(), apiKey.trim())
         SecureAiProviderStore(context).save(config)
+        CloudProviderRegistry(context).remember(config)
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
         return activateConfigured(context)
     }
@@ -55,6 +57,7 @@ object AiProviderManager {
     @Synchronized
     fun restorePrevious(context: Context): Boolean {
         if (!SecureAiProviderStore(context).restorePrevious()) return false
+        SecureAiProviderStore(context).load()?.let { CloudProviderRegistry(context).remember(it) }
         AiProviderHealth.reset()
         return activateConfigured(context)
     }
@@ -89,6 +92,11 @@ object AiProviderManager {
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
         val configuredId = host?.takeIf { it.isNotBlank() }?.let { providerId(it, config.model) }
         return Status(true, activeId != null && activeId == configuredId, activeId, host, config.model, config.apiKey.isNotBlank(), store.hasRecoverySnapshot())
+    }
+
+    fun cloudProfiles(context: Context): Pair<Boolean, Boolean> {
+        val registry = CloudProviderRegistry(context.applicationContext).also { it.migrateActiveIfNeeded() }
+        return registry.has(CloudProviderRegistry.Slot.META) to registry.has(CloudProviderRegistry.Slot.CLAUDE)
     }
 
     internal fun isClaudeConfig(config: SecureAiProviderStore.Config): Boolean {
