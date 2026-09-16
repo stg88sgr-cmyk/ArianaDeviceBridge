@@ -21,11 +21,30 @@ class AiRouteStateStoreTest {
     }
 
     @Test
-    fun engineTaskOrFallbackChangeIsRecorded() {
+    fun engineTaskFallbackOrReasonChangeIsRecorded() {
         val base = AiRouteStateStore.State("LOCAL", "GENERAL", false, 1L)
         assertTrue(AiRouteStateStore.shouldRecordTransition(base, base.copy(engine = "META", updatedAtMs = 2L)))
         assertTrue(AiRouteStateStore.shouldRecordTransition(base, base.copy(taskClass = "SECOND_OPINION", updatedAtMs = 2L)))
         assertTrue(AiRouteStateStore.shouldRecordTransition(base, base.copy(fallbackUsed = true, updatedAtMs = 2L)))
+        assertTrue(
+            AiRouteStateStore.shouldRecordTransition(
+                base.copy(fallbackUsed = true, fallbackReason = "CLAUDE_CIRCUIT_OPEN"),
+                base.copy(fallbackUsed = true, fallbackReason = "CLAUDE_PROVIDER_FAILED", updatedAtMs = 2L),
+            ),
+        )
+    }
+
+    @Test
+    fun identicalFallbackReasonIsNotDuplicated() {
+        val previous = AiRouteStateStore.State(
+            "META",
+            "CODE_ARCHITECTURE",
+            true,
+            1L,
+            "CLAUDE_CIRCUIT_OPEN",
+        )
+        val next = previous.copy(updatedAtMs = 2L)
+        assertFalse(AiRouteStateStore.shouldRecordTransition(previous, next))
     }
 
     @Test
