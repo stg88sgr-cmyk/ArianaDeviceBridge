@@ -14,6 +14,8 @@
     <string name="widget_avatar_description">ARIANA X-88</string>
     <string name="widget_open_hint">Tippen zum Öffnen · Phone Core v1</string>
     <string name="widget_speak">SPRECHEN</string>
+    <string name="widget_open">ÖFFNEN</string>
+    <string name="widget_stop_all">STOP ALL</string>
     <string name="wakeword_channel_name">Ariana Wakeword</string>
     <string name="wakeword_notification_title">Ariana hört auf dein Wakeword</string>
 </resources>
