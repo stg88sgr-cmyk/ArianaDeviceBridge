@@ -1,6 +1,10 @@
 package de.snowworks.app
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
+import de.snowworks.app.ui.HomeAiEngineIndicator
+import de.snowworks.app.ui.X88HomeActivity
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
@@ -23,6 +27,7 @@ class SnowworksApp : Application() {
         )
 
         DialogueRouter.initialize(this)
+        registerHomeAiIndicator()
 
         // Restore only the local loopback core when the user-controlled master gate
         // was already enabled and Stop-All has not blocked new actions.
@@ -38,5 +43,26 @@ class SnowworksApp : Application() {
         ) {
             AiProviderManager.activateConfigured(this)
         }
+    }
+
+    private fun registerHomeAiIndicator() {
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+
+            override fun onActivityResumed(activity: Activity) {
+                if (activity is X88HomeActivity) HomeAiEngineIndicator.attach(activity)
+            }
+
+            override fun onActivityPaused(activity: Activity) {
+                if (activity is X88HomeActivity) HomeAiEngineIndicator.detach(activity)
+            }
+
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) {
+                if (activity is X88HomeActivity) HomeAiEngineIndicator.detach(activity)
+            }
+        })
     }
 }
