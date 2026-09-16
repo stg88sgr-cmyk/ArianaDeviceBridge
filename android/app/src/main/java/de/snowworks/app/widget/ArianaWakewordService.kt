@@ -162,7 +162,10 @@ class ArianaWakewordService : Service(), RecognitionListener {
     private fun cancelRecognition() {
         listening = false
         handler.removeCallbacksAndMessages(null)
-        runCatching { recognizer?.cancel() }
+        val old = recognizer
+        recognizer = null
+        runCatching { old?.cancel() }
+        runCatching { old?.destroy() }
     }
 
     private fun publishStatus(status: String) {
@@ -271,9 +274,6 @@ class ArianaWakewordService : Service(), RecognitionListener {
         paused = true
         listening = false
 
-        // Samsung/Android can keep the microphone lease briefly after a wakeword
-        // result. Fully tear down this recognizer before Conversation creates its
-        // own recognizer, then hand off only after a short release window.
         val wakeRecognizer = recognizer
         recognizer = null
         runCatching { wakeRecognizer?.cancel() }
@@ -325,9 +325,10 @@ class ArianaWakewordService : Service(), RecognitionListener {
         paused = true
         listening = false
         handler.removeCallbacksAndMessages(null)
-        runCatching { recognizer?.cancel() }
-        runCatching { recognizer?.destroy() }
+        val old = recognizer
         recognizer = null
+        runCatching { old?.cancel() }
+        runCatching { old?.destroy() }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         foregroundStarted = false
         stopSelf()
@@ -336,10 +337,17 @@ class ArianaWakewordService : Service(), RecognitionListener {
     override fun onDestroy() {
         if (current === this) current = null
         destroyed = true
+        paused = true
+        listening = false
         handler.removeCallbacksAndMessages(null)
-        runCatching { recognizer?.cancel() }
-        runCatching { recognizer?.destroy() }
+        val old = recognizer
         recognizer = null
+        runCatching { old?.cancel() }
+        runCatching { old?.destroy() }
+        if (foregroundStarted) {
+            ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+            foregroundStarted = false
+        }
         super.onDestroy()
     }
 
@@ -387,13 +395,13 @@ class ArianaWakewordService : Service(), RecognitionListener {
         }
 
         fun stop(context: Context) {
+            WakewordStateStore.setEnabled(context, false)
             current?.let {
                 it.shutdownWakeword()
-                WakewordStateStore.setEnabled(context, false)
                 return
             }
             runCatching {
-                context.startService(Intent(context, ArianaWakewordService::class.java).setAction(ACTION_STOP))
+                context.stopService(Intent(context, ArianaWakewordService::class.java))
             }
         }
     }
