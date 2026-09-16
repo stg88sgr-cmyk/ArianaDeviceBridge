@@ -53,7 +53,7 @@ class ResonanceCoreTest {
         val stabilizer = ResonanceStabilizer()
         val frame = stabilizer.process(
             inputEnergy = 0.5f,
-            dominantHz = 440f,
+            dominantHz = 500f,
             bands = SpectralBands(0.1f, 0.9f, 0.3f),
             generatedFrequencyHz = 222f,
         )
