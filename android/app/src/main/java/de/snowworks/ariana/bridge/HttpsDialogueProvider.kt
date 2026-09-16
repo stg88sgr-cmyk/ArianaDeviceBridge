@@ -33,7 +33,8 @@ class HttpsDialogueProvider(
             .put("model", config.model.trim())
             .put("stream", false)
             .put("temperature", 0.6)
-            .put("max_tokens", 640)
+            .put("reasoning_effort", "low")
+            .put("max_completion_tokens", MAX_COMPLETION_TOKENS)
             .put(
                 "messages",
                 JSONArray()
@@ -167,7 +168,13 @@ class HttpsDialogueProvider(
                 }.trim()
                 else -> ""
             }
-            if (content.isEmpty()) throw DialogueRouter.ProviderException("PROVIDER_EMPTY_REPLY")
+            if (content.isEmpty()) {
+                val finishReason = first.optString("finish_reason", "").trim()
+                if (finishReason.equals("length", ignoreCase = true)) {
+                    throw DialogueRouter.ProviderException("PROVIDER_OUTPUT_BUDGET_EXHAUSTED")
+                }
+                throw DialogueRouter.ProviderException("PROVIDER_EMPTY_REPLY")
+            }
             return content.take(DialogueRouter.MAX_REPLY_CHARS)
         } catch (error: DialogueRouter.ProviderException) {
             throw error
@@ -194,9 +201,10 @@ class HttpsDialogueProvider(
 
     companion object {
         private const val CONNECT_TIMEOUT_MS = 5_000
-        private const val READ_TIMEOUT_MS = 25_000
+        private const val READ_TIMEOUT_MS = 30_000
         private const val MAX_ATTEMPTS = 2
         private const val RETRY_DELAY_MS = 700L
+        private const val MAX_COMPLETION_TOKENS = 4096
         private const val MAX_REQUEST_BYTES = 8 * 1024
         private const val MAX_RESPONSE_BYTES = 32 * 1024
         private val IP_LITERAL = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$|^[0-9a-fA-F:]+$")
