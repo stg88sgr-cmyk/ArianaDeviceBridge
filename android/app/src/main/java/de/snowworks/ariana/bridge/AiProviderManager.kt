@@ -3,7 +3,6 @@ package de.snowworks.ariana.bridge
 import android.content.Context
 import java.net.URI
 
-/** Coordinates encrypted provider configuration and DialogueRouter registration. */
 object AiProviderManager {
     data class Status(
         val configured: Boolean,
@@ -12,60 +11,84 @@ object AiProviderManager {
         val endpointHost: String?,
         val model: String?,
         val apiKeyPresent: Boolean,
+        val recoveryAvailable: Boolean,
+    )
+
+    data class ProbeResult(
+        val ok: Boolean,
+        val providerHost: String? = null,
+        val model: String? = null,
+        val replyPreview: String? = null,
+        val error: String? = null,
     )
 
     @Synchronized
     fun activateConfigured(context: Context): Boolean {
         val config = SecureAiProviderStore(context).load() ?: run {
-            DialogueRouter.unregister()
+            if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) DialogueRouter.unregister()
             return false
         }
         val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
         if (host.isBlank()) {
-            DialogueRouter.unregister()
+            if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) DialogueRouter.unregister()
             return false
         }
+        if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
         val generator = HttpsDialogueProvider(config)
         return DialogueRouter.register(providerId(host, config.model)) { text -> generator.generate(text) }
     }
 
     @Synchronized
-    fun configure(
-        context: Context,
-        endpoint: String,
-        model: String,
-        apiKey: String,
-    ): Boolean {
-        val config = SecureAiProviderStore.Config(
-            endpoint = endpoint.trim(),
-            model = model.trim(),
-            apiKey = apiKey.trim(),
-        )
+    fun configure(context: Context, endpoint: String, model: String, apiKey: String): Boolean {
+        val config = SecureAiProviderStore.Config(endpoint.trim(), model.trim(), apiKey.trim())
         SecureAiProviderStore(context).save(config)
+        if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
         return activateConfigured(context)
     }
 
     @Synchronized
     fun clear(context: Context) {
         SecureAiProviderStore(context).clear()
-        DialogueRouter.unregister()
+        if (DialogueRouter.providerId()?.startsWith("https-ai:") == true) DialogueRouter.unregister()
+    }
+
+    @Synchronized
+    fun restorePrevious(context: Context): Boolean {
+        if (!SecureAiProviderStore(context).restorePrevious()) return false
+        AiProviderHealth.reset()
+        return activateConfigured(context)
+    }
+
+    fun testConfigured(context: Context): ProbeResult {
+        val config = SecureAiProviderStore(context.applicationContext).load()
+            ?: return ProbeResult(false, error = "PROVIDER_NOT_CONFIGURED")
+        if (config.apiKey.isBlank()) return ProbeResult(false, error = "PROVIDER_KEY_MISSING")
+        val host = runCatching { URI(config.endpoint).host }.getOrNull()
+        if (host.isNullOrBlank()) return ProbeResult(false, model = config.model, error = "PROVIDER_CONFIG_INVALID")
+        return try {
+            val reply = HttpsDialogueProvider(config).generate("Connectivity smoke test for Ariana X-88. Reply briefly with META_SMOKE_OK.")
+            ProbeResult(
+                ok = reply.isNotBlank(),
+                providerHost = host,
+                model = config.model,
+                replyPreview = reply.replace(Regex("[\\u0000-\\u001f\\u007f]+"), " ").replace(Regex("\\s+"), " ").trim().take(120),
+                error = if (reply.isBlank()) "PROVIDER_EMPTY_REPLY" else null,
+            )
+        } catch (error: DialogueRouter.ProviderException) {
+            ProbeResult(false, host, config.model, error = error.code)
+        } catch (_: Exception) {
+            ProbeResult(false, host, config.model, error = "PROVIDER_PROBE_FAILED")
+        }
     }
 
     fun status(context: Context): Status {
-        val config = SecureAiProviderStore(context).load()
+        val store = SecureAiProviderStore(context)
+        val config = store.load()
         val activeId = DialogueRouter.providerId()
-        if (config == null) {
-            return Status(false, false, activeId, null, null, false)
-        }
+        if (config == null) return Status(false, false, activeId, null, null, false, store.hasRecoverySnapshot())
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
-        return Status(
-            configured = true,
-            active = activeId != null,
-            providerId = activeId,
-            endpointHost = host,
-            model = config.model,
-            apiKeyPresent = config.apiKey.isNotBlank(),
-        )
+        val configuredId = host?.takeIf { it.isNotBlank() }?.let { providerId(it, config.model) }
+        return Status(true, activeId != null && activeId == configuredId, activeId, host, config.model, config.apiKey.isNotBlank(), store.hasRecoverySnapshot())
     }
 
     private fun providerId(host: String, model: String): String {
