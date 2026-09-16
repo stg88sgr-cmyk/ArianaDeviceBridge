@@ -51,20 +51,18 @@ object SmartAiRouter {
         val registry = CloudProviderRegistry(context.applicationContext).also { it.migrateActiveIfNeeded() }
         val result = when (val taskClass = classify(text)) {
             TaskClass.PRIVATE_LOCAL -> callLocal(text, taskClass)
-            TaskClass.CODE_ARCHITECTURE -> {
-                val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
-                if (claude != null) callClaude(claude, policy.text, taskClass)
-                    .takeIf { it.ok }
-                    ?: callLocal(text, taskClass, fallback = true)
-                else callLocal(text, taskClass, fallback = true)
-            }
-            TaskClass.SECOND_OPINION -> {
-                val meta = registry.load(CloudProviderRegistry.Slot.META)
-                if (meta != null) callMeta(meta, policy.text, taskClass)
-                    .takeIf { it.ok }
-                    ?: callClaudeOrLocal(registry, policy.text, text, taskClass)
-                else callClaudeOrLocal(registry, policy.text, text, taskClass)
-            }
+            TaskClass.CODE_ARCHITECTURE -> callClaudeMetaLocal(
+                registry = registry,
+                cloudText = policy.text,
+                originalText = text,
+                taskClass = taskClass,
+            )
+            TaskClass.SECOND_OPINION -> callMetaClaudeLocal(
+                registry = registry,
+                cloudText = policy.text,
+                originalText = text,
+                taskClass = taskClass,
+            )
             TaskClass.GENERAL -> callLocal(text, taskClass)
         }
         return publish(context, result)
@@ -75,7 +73,7 @@ object SmartAiRouter {
         return result
     }
 
-    private fun callClaudeOrLocal(
+    private fun callClaudeMetaLocal(
         registry: CloudProviderRegistry,
         cloudText: String,
         originalText: String,
@@ -84,8 +82,36 @@ object SmartAiRouter {
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
         if (claude != null) {
             val result = callClaude(claude, cloudText, taskClass)
+            if (result.ok) return result
+        }
+
+        val meta = registry.load(CloudProviderRegistry.Slot.META)
+        if (meta != null) {
+            val result = callMeta(meta, cloudText, taskClass)
             if (result.ok) return result.copy(fallbackUsed = true)
         }
+
+        return callLocal(originalText, taskClass, fallback = true)
+    }
+
+    private fun callMetaClaudeLocal(
+        registry: CloudProviderRegistry,
+        cloudText: String,
+        originalText: String,
+        taskClass: TaskClass,
+    ): Result {
+        val meta = registry.load(CloudProviderRegistry.Slot.META)
+        if (meta != null) {
+            val result = callMeta(meta, cloudText, taskClass)
+            if (result.ok) return result
+        }
+
+        val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
+        if (claude != null) {
+            val result = callClaude(claude, cloudText, taskClass)
+            if (result.ok) return result.copy(fallbackUsed = true)
+        }
+
         return callLocal(originalText, taskClass, fallback = true)
     }
 
