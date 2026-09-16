@@ -53,12 +53,14 @@ object SmartAiRouter {
         val result = when (val taskClass = classify(text)) {
             TaskClass.PRIVATE_LOCAL -> callLocal(text, taskClass)
             TaskClass.CODE_ARCHITECTURE -> callClaudeMetaLocal(
+                context = context.applicationContext,
                 registry = registry,
                 cloudText = policy.text,
                 originalText = text,
                 taskClass = taskClass,
             )
             TaskClass.SECOND_OPINION -> callMetaClaudeLocal(
+                context = context.applicationContext,
                 registry = registry,
                 cloudText = policy.text,
                 originalText = text,
@@ -75,6 +77,7 @@ object SmartAiRouter {
     }
 
     private fun callClaudeMetaLocal(
+        context: Context,
         registry: CloudProviderRegistry,
         cloudText: String,
         originalText: String,
@@ -83,7 +86,7 @@ object SmartAiRouter {
         var reason: String? = null
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
         if (claude != null) {
-            val result = callClaude(claude, cloudText, taskClass)
+            val result = callClaude(context, claude, cloudText, taskClass, fallbackAttempt = false)
             if (result.ok) return result
             reason = appendReason(reason, result.error ?: "CLAUDE_FAILED")
         } else {
@@ -92,7 +95,7 @@ object SmartAiRouter {
 
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
-            val result = callMeta(meta, cloudText, taskClass)
+            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = true)
             if (result.ok) return result.copy(fallbackUsed = true, fallbackReason = reason)
             reason = appendReason(reason, result.error ?: "META_FAILED")
         } else {
@@ -103,6 +106,7 @@ object SmartAiRouter {
     }
 
     private fun callMetaClaudeLocal(
+        context: Context,
         registry: CloudProviderRegistry,
         cloudText: String,
         originalText: String,
@@ -111,7 +115,7 @@ object SmartAiRouter {
         var reason: String? = null
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
-            val result = callMeta(meta, cloudText, taskClass)
+            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = false)
             if (result.ok) return result
             reason = appendReason(reason, result.error ?: "META_FAILED")
         } else {
@@ -120,7 +124,7 @@ object SmartAiRouter {
 
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
         if (claude != null) {
-            val result = callClaude(claude, cloudText, taskClass)
+            val result = callClaude(context, claude, cloudText, taskClass, fallbackAttempt = true)
             if (result.ok) return result.copy(fallbackUsed = true, fallbackReason = reason)
             reason = appendReason(reason, result.error ?: "CLAUDE_FAILED")
         } else {
@@ -149,45 +153,59 @@ object SmartAiRouter {
     }
 
     private fun callClaude(
+        context: Context,
         config: SecureAiProviderStore.Config,
         text: String,
         taskClass: TaskClass,
+        fallbackAttempt: Boolean,
     ): Result {
         val providerId = providerId("claude", config)
+        AiProviderQualityStore.recordSelection(context, AiProviderQualityStore.Engine.CLAUDE, fallbackAttempt)
         if (!AiProviderHealth.acquireAttempt(providerId)) {
+            AiProviderQualityStore.recordCircuitRejected(context, AiProviderQualityStore.Engine.CLAUDE)
             return Result(false, taskClass, providerId = providerId, error = "CLAUDE_CIRCUIT_OPEN")
         }
         return try {
             val reply = ClaudeDialogueProvider(config).generate(text)
             AiProviderHealth.recordSuccess(providerId)
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.CLAUDE, ok = true)
             Result(true, taskClass, providerId = providerId, reply = reply)
         } catch (error: DialogueRouter.ProviderException) {
             AiProviderHealth.recordFailure(providerId, error.code)
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.CLAUDE, ok = false)
             Result(false, taskClass, providerId = providerId, error = error.code)
         } catch (_: Exception) {
             AiProviderHealth.recordFailure(providerId, "CLAUDE_PROVIDER_FAILED")
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.CLAUDE, ok = false)
             Result(false, taskClass, providerId = providerId, error = "CLAUDE_PROVIDER_FAILED")
         }
     }
 
     private fun callMeta(
+        context: Context,
         config: SecureAiProviderStore.Config,
         text: String,
         taskClass: TaskClass,
+        fallbackAttempt: Boolean,
     ): Result {
         val providerId = providerId("meta", config)
+        AiProviderQualityStore.recordSelection(context, AiProviderQualityStore.Engine.META, fallbackAttempt)
         if (!AiProviderHealth.acquireAttempt(providerId)) {
+            AiProviderQualityStore.recordCircuitRejected(context, AiProviderQualityStore.Engine.META)
             return Result(false, taskClass, providerId = providerId, error = "META_CIRCUIT_OPEN")
         }
         return try {
             val reply = HttpsDialogueProvider(config).generate(text)
             AiProviderHealth.recordSuccess(providerId)
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = true)
             Result(true, taskClass, providerId = providerId, reply = reply)
         } catch (error: DialogueRouter.ProviderException) {
             AiProviderHealth.recordFailure(providerId, error.code)
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = false)
             Result(false, taskClass, providerId = providerId, error = error.code)
         } catch (_: Exception) {
             AiProviderHealth.recordFailure(providerId, "META_PROVIDER_FAILED")
+            AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = false)
             Result(false, taskClass, providerId = providerId, error = "META_PROVIDER_FAILED")
         }
     }
