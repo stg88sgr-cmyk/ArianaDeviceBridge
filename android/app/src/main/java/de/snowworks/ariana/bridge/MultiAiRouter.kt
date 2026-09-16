@@ -206,7 +206,8 @@ object MultiAiRouter {
         }
 
         val initial = DialogueRouter.generate(text)
-        if (!initial.ok || initial.reply.isNullOrBlank()) {
+        val initialReply = initial.reply?.takeIf { it.isNotBlank() }
+        if (!initial.ok || initialReply == null) {
             return Result(
                 ok = false,
                 mode = Mode.REPAIR,
@@ -215,7 +216,7 @@ object MultiAiRouter {
             )
         }
 
-        var currentReply = initial.reply
+        var currentReply: String = initialReply
         var latestReview: String? = null
         var latestMetaProviderId: String? = null
 
@@ -226,10 +227,11 @@ object MultiAiRouter {
                 round = round,
             )
             val meta = callMeta(context, reviewPrompt)
+            val metaReply = meta.reply?.takeIf { it.isNotBlank() }
             latestMetaProviderId = meta.providerId
-            latestReview = meta.reply
+            latestReview = metaReply
 
-            if (!meta.ok || meta.reply.isNullOrBlank()) {
+            if (!meta.ok || metaReply == null) {
                 return Result(
                     ok = true,
                     mode = Mode.REPAIR,
@@ -242,14 +244,14 @@ object MultiAiRouter {
                 )
             }
 
-            val parsed = MultiAiRepairLoop.parseReview(meta.reply)
+            val parsed = MultiAiRepairLoop.parseReview(metaReply)
                 ?: return Result(
                     ok = true,
                     mode = Mode.REPAIR,
                     primaryProviderId = initial.providerId,
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = meta.reply,
+                    metaReply = metaReply,
                     review = "REVIEW_FORMAT_INVALID",
                     consensus = currentReply,
                     repairRounds = round,
@@ -262,8 +264,8 @@ object MultiAiRouter {
                     primaryProviderId = initial.providerId,
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = meta.reply,
-                    review = meta.reply,
+                    metaReply = metaReply,
+                    review = metaReply,
                     consensus = currentReply,
                     repairRounds = round,
                 )
@@ -276,7 +278,8 @@ object MultiAiRouter {
                 round = round,
             )
             val revised = DialogueRouter.generate(revisionPrompt)
-            if (!revised.ok || revised.reply.isNullOrBlank()) {
+            val revisedReply = revised.reply?.takeIf { it.isNotBlank() }
+            if (!revised.ok || revisedReply == null) {
                 val fallback = parsed.candidate ?: currentReply
                 return Result(
                     ok = fallback.isNotBlank(),
@@ -285,14 +288,14 @@ object MultiAiRouter {
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
                     metaReply = parsed.candidate,
-                    review = meta.reply,
+                    review = metaReply,
                     consensus = fallback,
                     repairRounds = round,
                     error = if (fallback.isBlank()) revised.error ?: "REPAIR_FAILED" else null,
                 )
             }
 
-            currentReply = revised.reply
+            currentReply = revisedReply
 
             if (round == MultiAiRepairLoop.MAX_ROUNDS) {
                 val reviewerCandidate = parsed.candidate
