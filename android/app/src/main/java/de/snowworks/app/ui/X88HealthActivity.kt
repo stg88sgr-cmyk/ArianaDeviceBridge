@@ -15,6 +15,7 @@ import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
+import de.snowworks.ariana.thermal.ThermalSafetyController
 import java.text.DateFormat
 import java.util.Date
 import java.util.concurrent.Executors
@@ -49,7 +50,7 @@ class X88HealthActivity : AppCompatActivity() {
 
         root.addView(text("ARIANA X-88", 12f, "#7E93A6"))
         root.addView(text("HEALTH · RELEASE GATE", 26f, "#EAF7FF"))
-        root.addView(text("Lokale Bridge, Gate, Session-Module und Berechtigungsoberfläche.", 12f, "#8398A8"))
+        root.addView(text("Lokale Bridge, Gate, Session-Module und echte Android-Thermalwerte.", 12f, "#8398A8"))
 
         runButton = MaterialButton(this).apply {
             text = "Bridge Self-Test starten"
@@ -112,6 +113,7 @@ class X88HealthActivity : AppCompatActivity() {
     private fun runtimeSummary(): String {
         val api = ArianaDeviceApi(this)
         val connection = api.getConnection()
+        val thermal = ThermalSafetyController.currentSnapshot()
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
         val tracked = listOf(
@@ -131,6 +133,14 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("Stop-All blockiert: ${if (api.isBlocked()) "JA" else "NEIN"}")
             appendLine("Bridge: ${connection.label}")
             appendLine("Bridge Detail: ${connection.detail}")
+            appendLine()
+            appendLine("THERMAL SAFETY")
+            appendLine("Android Thermal API: ${if (thermal.supported) "AKTIV" else "NICHT UNTERSTÜTZT"}")
+            appendLine("Status: ${thermal.label} (${thermal.status})")
+            appendLine("Lokale KI-Inferenz: ${if (thermal.localInferenceAllowed) "ERLAUBT" else "GEDROSSELT"}")
+            appendLine("Capture-Hardware: ${if (thermal.captureAllowed) "ERLAUBT" else "GESTOPPT"}")
+            appendLine("Master einschaltbar: ${if (thermal.masterEnableAllowed) "JA" else "NEIN"}")
+            appendLine()
             appendLine("Presence: ${PresenceSignalController.currentState()}")
             appendLine("NotificationStore RAM-Einträge: ${notifications.size}")
             appendLine("SAF-Dateibaum: ${tree?.toString() ?: "nicht gewählt"}")
