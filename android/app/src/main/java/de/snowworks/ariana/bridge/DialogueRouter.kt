@@ -125,6 +125,7 @@ object DialogueRouter {
             "/parallel" to MultiAiRouter.Mode.PARALLEL,
             "/review" to MultiAiRouter.Mode.REVIEW,
             "/consensus" to MultiAiRouter.Mode.CONSENSUS,
+            "/repair" to MultiAiRouter.Mode.REPAIR,
         )
         for ((prefix, mode) in commands) {
             if (trimmed.equals(prefix, ignoreCase = true)) {
@@ -158,7 +159,9 @@ object DialogueRouter {
                 if (!result.primaryReply.isNullOrBlank() && !result.review.isNullOrBlank()) append("\n\n")
                 result.review?.let { append("Meta-Review: ").append(it) }
             }
-            MultiAiRouter.Mode.CONSENSUS -> result.consensus ?: result.primaryReply ?: result.metaReply
+            MultiAiRouter.Mode.CONSENSUS,
+            MultiAiRouter.Mode.REPAIR,
+            -> result.consensus ?: result.primaryReply ?: result.metaReply
         }
 
         val cleaned = sanitizeReply(reply.orEmpty())
