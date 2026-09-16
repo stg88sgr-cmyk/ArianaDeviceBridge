@@ -6,6 +6,7 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
+import de.snowworks.app.widget.ArianaWakewordService
 import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
@@ -141,6 +142,7 @@ class ArianaDeviceApi(private val context: Context) {
         )
 
     private fun stopAllSessions() {
+        ArianaWakewordService.stop(context)
         ArianaCaptureService.stopAll(context)
         SessionRegistry.clear()
     }
