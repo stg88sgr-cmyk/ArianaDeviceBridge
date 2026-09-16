@@ -341,6 +341,13 @@ object MultiAiRouter {
         val config = SecureAiProviderStore(context.applicationContext).load()
             ?: return RemoteOutcome(false, error = "META_NOT_CONFIGURED")
         val providerId = remoteProviderId(config)
+
+        val egress = X88EgressPolicy.evaluateMeta(config)
+        if (!egress.allowed) {
+            AiProviderHealth.recordFailure(providerId, egress.code)
+            return RemoteOutcome(false, providerId, error = egress.code)
+        }
+
         if (!AiProviderHealth.acquireAttempt(providerId)) {
             return RemoteOutcome(false, providerId, error = "META_CIRCUIT_OPEN")
         }
@@ -348,12 +355,27 @@ object MultiAiRouter {
         return try {
             val reply = HttpsDialogueProvider(config).generate(text)
             AiProviderHealth.recordSuccess(providerId)
+            X88SecurityAudit.record(
+                actor = X88EgressPolicy.Actor.LUNA_XXY.name,
+                event = "meta_execution_success",
+                detail = "provider=$providerId;host=${egress.host};port=${egress.port}",
+            )
             RemoteOutcome(true, providerId, reply)
         } catch (error: DialogueRouter.ProviderException) {
             AiProviderHealth.recordFailure(providerId, error.code)
+            X88SecurityAudit.record(
+                actor = X88EgressPolicy.Actor.LUNA_XXY.name,
+                event = "meta_execution_failure",
+                detail = "provider=$providerId;code=${error.code}",
+            )
             RemoteOutcome(false, providerId, error = error.code)
         } catch (_: Exception) {
             AiProviderHealth.recordFailure(providerId, "META_PROVIDER_FAILED")
+            X88SecurityAudit.record(
+                actor = X88EgressPolicy.Actor.LUNA_XXY.name,
+                event = "meta_execution_failure",
+                detail = "provider=$providerId;code=META_PROVIDER_FAILED",
+            )
             RemoteOutcome(false, providerId, error = "META_PROVIDER_FAILED")
         }
     }
