@@ -15,6 +15,7 @@ import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 
 class SnowworksApp : Application() {
     override fun onCreate() {
@@ -27,6 +28,10 @@ class SnowworksApp : Application() {
         UniversalBridgeStateStore(this).ensureDefaults(
             currentBuild = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
         )
+
+        // Consolidated Universal Core V2 runtime. It mirrors the current master/stop state
+        // and becomes the single home for task scheduling, telemetry and adaptive runtime work.
+        ArianaUniversalRuntimeV2.initialize(this)
 
         // Restore cloud provider circuit-breaker/recovery metadata before any AI
         // provider can be selected or called. No prompts, replies or credentials
