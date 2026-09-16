@@ -1,0 +1,52 @@
+name: Termux Runtime Gate
+
+on:
+  push:
+    branches:
+      - x88-evolution-g2
+    paths:
+      - 'termux-runtime/**'
+      - '.github/workflows/termux-runtime-gate.yml'
+  pull_request:
+    paths:
+      - 'termux-runtime/**'
+      - '.github/workflows/termux-runtime-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Bash syntax gate
+        run: |
+          set -euo pipefail
+          for file in termux-runtime/*.sh; do
+            echo "bash -n $file"
+            bash -n "$file"
+          done
+
+      - name: ShellCheck gate
+        run: |
+          set -euo pipefail
+          shellcheck -x -P termux-runtime termux-runtime/*.sh
+
+      - name: Runtime contract gate
+        run: |
+          set -euo pipefail
+          grep -Fq '127.0.0.1' termux-runtime/runtime-common.sh
+          grep -Fq '8765' termux-runtime/runtime-common.sh
+          grep -Fq 'x88-bridge' termux-runtime/runtime-common.sh
+          grep -Fq 'luna-xxy-worker' termux-runtime/runtime-common.sh
+          grep -Fq -- '--require-boot' termux-runtime/x88-final-gate.sh
+          echo 'Runtime contract GREEN'
