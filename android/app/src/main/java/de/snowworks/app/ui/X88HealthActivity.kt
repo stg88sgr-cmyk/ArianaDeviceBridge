@@ -18,6 +18,7 @@ import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
+import de.snowworks.ariana.bridge.AiRouteStateStore
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.CloudProviderRegistry
 import de.snowworks.ariana.files.TreePermissionStore
@@ -170,6 +171,7 @@ class X88HealthActivity : AppCompatActivity() {
         val connection = api.getConnection()
         val thermal = ThermalSafetyController.currentSnapshot()
         val ai = AiHealthReporter.snapshot(this)
+        val routeHistory = AiRouteStateStore.history(this).takeLast(6).asReversed()
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -190,6 +192,15 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine(providerLine(ai.meta))
             appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
             appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
+            appendLine()
+            appendLine("ROUTER HISTORY")
+            if (routeHistory.isEmpty()) {
+                appendLine("noch keine Zustandswechsel")
+            } else {
+                routeHistory.forEach { entry ->
+                    appendLine("${formatTime(entry.updatedAtMs)} · ${entry.engine} · ${entry.taskClass}${if (entry.fallbackUsed) " · FALLBACK" else ""}")
+                }
+            }
             appendLine()
             appendLine("AI RECOVERY SUPERVISOR")
             appendLine("Status: ${if (supervisor.running) "RUNNING" else "STOPPED"} · tick=${supervisor.tickSeconds}s · min-gap=${supervisor.minProbeIntervalMs / 1000L}s")
