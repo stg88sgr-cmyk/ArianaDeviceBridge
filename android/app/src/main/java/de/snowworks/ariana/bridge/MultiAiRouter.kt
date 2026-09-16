@@ -12,7 +12,7 @@ import java.util.concurrent.TimeoutException
  * OpenAI-compatible provider (for example Meta Model API / Muse Spark).
  *
  * The active Ariana provider remains authoritative. The remote provider acts as
- * a second opinion for analysis, review and consensus synthesis.
+ * a second opinion for analysis, review, repair and consensus synthesis.
  */
 object MultiAiRouter {
     const val META_TIMEOUT_MS = 30_000L
@@ -23,6 +23,7 @@ object MultiAiRouter {
         PARALLEL,
         REVIEW,
         CONSENSUS,
+        REPAIR,
     }
 
     data class Result(
@@ -38,6 +39,7 @@ object MultiAiRouter {
         val judgeVerdict: MultiAiJudge.Verdict? = null,
         val judgeRationale: String? = null,
         val judgeError: String? = null,
+        val repairRounds: Int = 0,
         val error: String? = null,
     )
 
@@ -61,6 +63,7 @@ object MultiAiRouter {
             Mode.PARALLEL -> parallel(context, text)
             Mode.REVIEW -> review(context, text)
             Mode.CONSENSUS -> consensus(context, text)
+            Mode.REPAIR -> repair(context, text)
         }
     }
 
@@ -128,8 +131,8 @@ object MultiAiRouter {
         }
 
         val reviewPrompt = buildString {
-            append("Du bist der zweite technische Reviewer für Ariana. Prüfe die folgende Antwort kritisch. ")
-            append("Nenne konkrete Fehler, Risiken und eine bessere Lösung, falls nötig. Aufgabe: ")
+            append("Du bist der zweite technische Reviewer fuer Ariana. Pruefe die folgende Antwort kritisch. ")
+            append("Nenne konkrete Fehler, Risiken und eine bessere Loesung, falls noetig. Aufgabe: ")
             append(text.take(420))
             append("\nAriana-Antwort: ")
             append(primary.reply.take(620))
@@ -189,6 +192,147 @@ object MultiAiRouter {
             judgeRationale = judge.rationale,
             judgeError = if (judge.ok) null else judge.error,
             error = if (consensus.isBlank()) judge.error ?: "CONSENSUS_FAILED" else null,
+        )
+    }
+
+    private fun repair(context: Context, text: String): Result {
+        if (remoteProviderIsPrimary(context)) {
+            return Result(
+                ok = false,
+                mode = Mode.REPAIR,
+                primaryProviderId = DialogueRouter.providerId(),
+                error = "DISTINCT_PRIMARY_UNAVAILABLE",
+            )
+        }
+
+        val initial = DialogueRouter.generate(text)
+        if (!initial.ok || initial.reply.isNullOrBlank()) {
+            return Result(
+                ok = false,
+                mode = Mode.REPAIR,
+                primaryProviderId = initial.providerId,
+                error = initial.error ?: "PRIMARY_FAILED",
+            )
+        }
+
+        var currentReply = initial.reply
+        var latestReview: String? = null
+        var latestMetaProviderId: String? = null
+
+        for (round in 1..MultiAiRepairLoop.MAX_ROUNDS) {
+            val reviewPrompt = MultiAiRepairLoop.buildReviewPrompt(
+                task = text,
+                draft = currentReply,
+                round = round,
+            )
+            val meta = callMeta(context, reviewPrompt)
+            latestMetaProviderId = meta.providerId
+            latestReview = meta.reply
+
+            if (!meta.ok || meta.reply.isNullOrBlank()) {
+                return Result(
+                    ok = true,
+                    mode = Mode.REPAIR,
+                    primaryProviderId = initial.providerId,
+                    metaProviderId = latestMetaProviderId,
+                    primaryReply = currentReply,
+                    review = "REVIEW_UNAVAILABLE:${meta.error ?: "META_FAILED"}",
+                    consensus = currentReply,
+                    repairRounds = round,
+                )
+            }
+
+            val parsed = MultiAiRepairLoop.parseReview(meta.reply)
+                ?: return Result(
+                    ok = true,
+                    mode = Mode.REPAIR,
+                    primaryProviderId = initial.providerId,
+                    metaProviderId = latestMetaProviderId,
+                    primaryReply = currentReply,
+                    metaReply = meta.reply,
+                    review = "REVIEW_FORMAT_INVALID",
+                    consensus = currentReply,
+                    repairRounds = round,
+                )
+
+            if (parsed.status == MultiAiRepairLoop.Status.PASS) {
+                return Result(
+                    ok = true,
+                    mode = Mode.REPAIR,
+                    primaryProviderId = initial.providerId,
+                    metaProviderId = latestMetaProviderId,
+                    primaryReply = currentReply,
+                    metaReply = meta.reply,
+                    review = meta.reply,
+                    consensus = currentReply,
+                    repairRounds = round,
+                )
+            }
+
+            val revisionPrompt = MultiAiRepairLoop.buildRevisionPrompt(
+                task = text,
+                draft = currentReply,
+                review = parsed,
+                round = round,
+            )
+            val revised = DialogueRouter.generate(revisionPrompt)
+            if (!revised.ok || revised.reply.isNullOrBlank()) {
+                val fallback = parsed.candidate ?: currentReply
+                return Result(
+                    ok = fallback.isNotBlank(),
+                    mode = Mode.REPAIR,
+                    primaryProviderId = initial.providerId,
+                    metaProviderId = latestMetaProviderId,
+                    primaryReply = currentReply,
+                    metaReply = parsed.candidate,
+                    review = meta.reply,
+                    consensus = fallback,
+                    repairRounds = round,
+                    error = if (fallback.isBlank()) revised.error ?: "REPAIR_FAILED" else null,
+                )
+            }
+
+            currentReply = revised.reply
+
+            if (round == MultiAiRepairLoop.MAX_ROUNDS) {
+                val reviewerCandidate = parsed.candidate
+                if (!reviewerCandidate.isNullOrBlank()) {
+                    val judge = MultiAiJudge.decide(
+                        task = text,
+                        primaryReply = currentReply,
+                        metaReply = reviewerCandidate,
+                    )
+                    val finalReply = judge.finalReply ?: currentReply
+                    return Result(
+                        ok = finalReply.isNotBlank(),
+                        mode = Mode.REPAIR,
+                        primaryProviderId = revised.providerId ?: initial.providerId,
+                        metaProviderId = latestMetaProviderId,
+                        primaryReply = currentReply,
+                        metaReply = reviewerCandidate,
+                        review = latestReview,
+                        consensus = finalReply,
+                        judgeProviderId = judge.judgeProviderId,
+                        judgeVerdict = judge.verdict,
+                        judgeRationale = judge.rationale,
+                        judgeError = if (judge.ok) null else judge.error,
+                        repairRounds = round,
+                        error = if (finalReply.isBlank()) judge.error ?: "REPAIR_FAILED" else null,
+                    )
+                }
+            }
+        }
+
+        return Result(
+            ok = currentReply.isNotBlank(),
+            mode = Mode.REPAIR,
+            primaryProviderId = initial.providerId,
+            metaProviderId = latestMetaProviderId,
+            primaryReply = currentReply,
+            review = latestReview,
+            consensus = currentReply,
+            repairRounds = MultiAiRepairLoop.MAX_ROUNDS,
+            error = if (currentReply.isBlank()) "REPAIR_FAILED" else null,
         )
     }
 
