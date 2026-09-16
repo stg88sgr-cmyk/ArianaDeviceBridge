@@ -12,6 +12,7 @@ import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import java.util.Locale
+import java.util.concurrent.CopyOnWriteArraySet
 
 class ArianaVoiceController(
     context: Context,
@@ -30,6 +31,7 @@ class ArianaVoiceController(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var recognizer: SpeechRecognizer? = createRecognizer()
     private val tts = TextToSpeech(appContext, this)
+    private val retryGate = VoiceRetryGate()
 
     private var ttsReady = false
     @Volatile private var speechActive = false
@@ -37,10 +39,10 @@ class ArianaVoiceController(
     @Volatile private var suppressCancelError = false
     @Volatile private var recognitionReady = false
     @Volatile private var retryPending = false
-    @Volatile private var recognitionAttempt = 0
 
     init {
         recognizer?.setRecognitionListener(this)
+        activeControllers.add(this)
     }
 
     private fun createRecognizer(): SpeechRecognizer? =
@@ -88,13 +90,13 @@ class ArianaVoiceController(
         listener.onState("Ich höre zu …")
         recognitionReady = false
         retryPending = allowRetry
-        val attempt = ++recognitionAttempt
+        val attempt = retryGate.next()
         listeningActive = true
 
         runCatching { localRecognizer.startListening(intent) }
             .onSuccess {
                 mainHandler.postDelayed({
-                    if (attempt == recognitionAttempt && listeningActive && !recognitionReady && retryPending) {
+                    if (retryGate.isCurrent(attempt) && listeningActive && !recognitionReady && retryPending) {
                         retryListeningOnce()
                     }
                 }, 1800L)
@@ -112,7 +114,7 @@ class ArianaVoiceController(
         retryPending = false
         recognitionReady = false
         listeningActive = false
-        recognitionAttempt++
+        val rebuildToken = retryGate.next()
         suppressCancelError = true
 
         val oldRecognizer = recognizer
@@ -122,6 +124,8 @@ class ArianaVoiceController(
 
         listener.onState("Spracherkennung wird neu aktiviert …")
         mainHandler.postDelayed({
+            if (!retryGate.isCurrent(rebuildToken)) return@postDelayed
+
             val freshRecognizer = createRecognizer()
             recognizer = freshRecognizer
             freshRecognizer?.setRecognitionListener(this)
@@ -146,7 +150,8 @@ class ArianaVoiceController(
     fun cancelListening(): Boolean {
         retryPending = false
         recognitionReady = false
-        recognitionAttempt++
+        retryGate.invalidate()
+        mainHandler.removeCallbacksAndMessages(null)
         val wasListening = listeningActive
         listeningActive = false
         suppressCancelError = true
@@ -168,9 +173,21 @@ class ArianaVoiceController(
         tts.speak(spoken, TextToSpeech.QUEUE_FLUSH, null, "ariana-x88-voice-v3")
     }
 
+    private fun releaseForDeviceShutdown() {
+        val release = {
+            cancelListening()
+            interruptSpeech()
+            Unit
+        }
+        if (Looper.myLooper() == Looper.getMainLooper()) release()
+        else mainHandler.post { release() }
+    }
+
     fun shutdown() {
+        activeControllers.remove(this)
         retryPending = false
-        recognitionAttempt++
+        recognitionReady = false
+        retryGate.invalidate()
         mainHandler.removeCallbacksAndMessages(null)
         listeningActive = false
         runCatching { recognizer?.cancel() }
@@ -279,7 +296,7 @@ class ArianaVoiceController(
         listeningActive = false
         recognitionReady = false
         retryPending = false
-        recognitionAttempt++
+        retryGate.invalidate()
 
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
@@ -296,4 +313,16 @@ class ArianaVoiceController(
 
     override fun onPartialResults(partialResults: Bundle?) = Unit
     override fun onEvent(eventType: Int, params: Bundle?) = Unit
+
+    companion object {
+        private val activeControllers = CopyOnWriteArraySet<ArianaVoiceController>()
+
+        /**
+         * Releases every in-process SpeechRecognizer/TTS owner. This is used by
+         * MASTER OFF and STOP ALL so a delayed voice retry cannot reopen the mic.
+         */
+        fun releaseAllForDeviceShutdown() {
+            activeControllers.toList().forEach { it.releaseForDeviceShutdown() }
+        }
+    }
 }
