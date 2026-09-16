@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.apk.ApkBridgeStatus
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
@@ -129,11 +130,17 @@ object LocalBridgeServer {
                 error("UNAUTHORIZED", "Lokales Bridge-Token fehlt oder ist ungültig."),
             )
             path == "/state" && method == "GET" -> HttpResult(200, state(context))
+            path == "/v2/apk/status" && method == "GET" -> HttpResult(200, withRequestId(ApkBridgeStatus.status(context)))
+            path == "/v2/apk/list" && method == "GET" -> HttpResult(200, withRequestId(ApkBridgeStatus.list(context)))
+            path == "/v2/apk/inspect/latest" && method == "GET" -> {
+                val response = withRequestId(ApkBridgeStatus.inspectLatest(context))
+                HttpResult(if (response.optBoolean("ok", false)) 200 else 404, response)
+            }
             path == "/action" && method == "POST" -> {
                 val response = action(context, body)
                 HttpResult(if (response.optBoolean("ok", false)) 200 else 400, response)
             }
-            path == "/state" || path == "/action" -> HttpResult(
+            path == "/state" || path == "/action" || path.startsWith("/v2/apk/") -> HttpResult(
                 405,
                 error("METHOD_NOT_ALLOWED", "HTTP-Methode ist für diesen Endpunkt nicht erlaubt."),
             )
@@ -290,6 +297,7 @@ object LocalBridgeServer {
             .put("activeSessions", JSONArray(SessionRegistry.snapshot().map { it.id }))
             .put("dialogueSessionActive", DialogueSessionStore.hasActiveSession())
             .put("dialogueProviderId", DialogueRouter.providerId())
+            .put("apk", ApkBridgeStatus.status(context))
     }
 
     private fun action(context: Context, body: String): JSONObject {
@@ -299,14 +307,25 @@ object LocalBridgeServer {
         }
         val action = json.optString("action")
         val gate = ArianaGate(context)
-        if (action !in setOf("stop_all", "camera_stop", "microphone_stop", "screen_stop", "presence_clear") &&
-            (!gate.isMasterEnabled || gate.isBlocked)
+        if (action !in setOf(
+                "stop_all",
+                "camera_stop",
+                "microphone_stop",
+                "screen_stop",
+                "presence_clear",
+                "apk_status",
+                "apk_list",
+                "apk_inspect_latest",
+            ) && (!gate.isMasterEnabled || gate.isBlocked)
         ) {
             return error("MASTER_DISABLED", "Master-Zugriff ist deaktiviert.", requestId)
         }
 
         return when (action) {
             "get_device_status", "get_permission_status", "get_active_sessions" -> state(context).put("requestId", requestId)
+            "apk_status" -> withRequestId(ApkBridgeStatus.status(context), requestId)
+            "apk_list" -> withRequestId(ApkBridgeStatus.list(context), requestId)
+            "apk_inspect_latest" -> withRequestId(ApkBridgeStatus.inspectLatest(context), requestId)
             "notification_list" -> JSONObject()
                 .put("ok", true)
                 .put("requestId", requestId)
@@ -367,6 +386,9 @@ object LocalBridgeServer {
             else -> error("INVALID_REQUEST", "Unbekannte Aktion.", requestId)
         }
     }
+
+    private fun withRequestId(json: JSONObject, requestId: String = UUID.randomUUID().toString()): JSONObject =
+        json.put("requestId", requestId)
 
     private fun presence(
         context: Context,
