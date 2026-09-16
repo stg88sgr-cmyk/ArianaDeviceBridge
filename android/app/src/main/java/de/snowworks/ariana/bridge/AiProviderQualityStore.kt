@@ -36,7 +36,8 @@ object AiProviderQualityStore {
         engine: Engine,
         fallbackAttempt: Boolean,
     ) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val prefix = prefix(engine)
         prefs.edit()
             .putLong("${prefix}_selected", prefs.getLong("${prefix}_selected", 0L) + 1L)
@@ -45,18 +46,31 @@ object AiProviderQualityStore {
                 prefs.getLong("${prefix}_fallback", 0L) + if (fallbackAttempt) 1L else 0L,
             )
             .apply()
+        AiProviderQualityTrendStore.record(
+            app,
+            engine,
+            AiProviderQualityTrendStore.Event.SELECTED,
+            fallbackAttempt = fallbackAttempt,
+        )
     }
 
     @Synchronized
     fun recordCircuitRejected(context: Context, engine: Engine) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val key = "${prefix(engine)}_circuit_rejected"
         prefs.edit().putLong(key, prefs.getLong(key, 0L) + 1L).apply()
+        AiProviderQualityTrendStore.record(
+            app,
+            engine,
+            AiProviderQualityTrendStore.Event.CIRCUIT_REJECTED,
+        )
     }
 
     @Synchronized
     fun recordExecuted(context: Context, engine: Engine, ok: Boolean) {
-        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val app = context.applicationContext
+        val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val prefix = prefix(engine)
         prefs.edit()
             .putLong("${prefix}_executed", prefs.getLong("${prefix}_executed", 0L) + 1L)
@@ -65,6 +79,12 @@ object AiProviderQualityStore {
                 prefs.getLong(if (ok) "${prefix}_success" else "${prefix}_error", 0L) + 1L,
             )
             .apply()
+        AiProviderQualityTrendStore.record(
+            app,
+            engine,
+            if (ok) AiProviderQualityTrendStore.Event.EXECUTED_SUCCESS
+            else AiProviderQualityTrendStore.Event.EXECUTED_ERROR,
+        )
     }
 
     fun snapshot(context: Context, engine: Engine): Snapshot {
