@@ -54,6 +54,18 @@ object PresenceSignalController {
             .setOngoing(state == State.THINKING)
             .build()
 
+        // Keep the runtime permission check local to the notify() call as well.
+        // Android Lint intentionally does not infer permission guarantees through
+        // arbitrary helper methods, so this guard is both defensive and analyzable.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                app,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+
         return runCatching {
             NotificationManagerCompat.from(app).notify(NOTIFICATION_ID, notification)
             true
