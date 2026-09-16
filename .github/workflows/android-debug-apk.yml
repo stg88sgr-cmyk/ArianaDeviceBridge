@@ -2,10 +2,6 @@ name: Android Debug APK
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "android/**"
-      - ".github/workflows/android-debug-apk.yml"
   push:
     paths:
       - "android/**"
@@ -27,6 +23,8 @@ jobs:
 
       - name: Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -42,14 +40,6 @@ jobs:
           ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-
-          # Feature branches prove compilation with an ephemeral debug key. Only main
-          # may consume the pinned update-signing identity.
-          if [[ "$GITHUB_EVENT_NAME" == "pull_request" || "$GITHUB_REF" != "refs/heads/main" ]]; then
-            echo "ARIANA_STABLE_SIGNING=disabled" >> "$GITHUB_ENV"
-            echo "Feature-branch build: using the ephemeral Android debug key."
-            exit 0
-          fi
 
           if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" && -z "$ARIANA_DEBUG_STORE_PASSWORD" && -z "$ARIANA_DEBUG_KEY_ALIAS" && -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
             echo "ARIANA_STABLE_SIGNING=disabled" >> "$GITHUB_ENV"
@@ -73,7 +63,7 @@ jobs:
           grep -F 'path == "/state" && method == "GET"' android/app/src/main/java/de/snowworks/ariana/bridge/LocalBridgeServer.kt
           grep -F 'LocalBridgeServer.start(this)' android/app/src/main/java/de/snowworks/app/SnowworksApp.kt
           grep -Eq 'versionCode = [1-9][0-9]*' android/app/build.gradle.kts
-          grep -Eq 'versionName = "[0-9]+\.[0-9]+\.[0-9]+"' android/app/build.gradle.kts
+          grep -Eq 'versionName = "[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?"' android/app/build.gradle.kts
 
       - name: X-88 loopback security self-test v2 gate
         shell: bash

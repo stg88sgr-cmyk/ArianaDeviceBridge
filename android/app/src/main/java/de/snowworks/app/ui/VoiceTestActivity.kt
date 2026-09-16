@@ -22,6 +22,7 @@ import de.snowworks.ariana.bridge.ActionPolicy
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeActionClient
 import de.snowworks.ariana.bridge.LocalDeviceActionExecutor
 import de.snowworks.ariana.voice.ArianaVoiceController
@@ -53,7 +54,9 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         super.onCreate(savedInstanceState)
         api = ArianaDeviceApi(this)
         voice = ArianaVoiceController(this, this)
-        if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)) {
+        if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
+            !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false)
+        ) {
             runCatching { AiProviderManager.activateConfigured(this) }
         }
         setContentView(buildUi())
@@ -62,7 +65,8 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     override fun onResume() {
         super.onResume()
         if (::providerView.isInitialized) {
-            if (!runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false) &&
+            if (!runCatching { LoopbackArianaProviderManager.activateIfAvailable() }.getOrDefault(false) &&
+                !runCatching { LocalAiProviderManager.activateConfigured(this) }.getOrDefault(false) &&
                 DialogueRouter.providerId() == null
             ) {
                 runCatching { AiProviderManager.activateConfigured(this) }
@@ -185,6 +189,8 @@ class VoiceTestActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         val local = LocalAiProviderManager.status(this)
         val cloud = AiProviderManager.status(this)
         providerView.text = when {
+            activeId == LoopbackArianaProviderManager.PROVIDER_ID ->
+                "Dialog: Ariana Core · lokal · Termux :8767"
             activeId == LocalAiProviderManager.PROVIDER_ID -> {
                 val size = String.format("%.0f MB", local.sizeBytes / 1024.0 / 1024.0)
                 "Dialog: lokal · offline · $size"

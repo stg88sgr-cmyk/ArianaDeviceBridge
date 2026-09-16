@@ -9,6 +9,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
+import de.snowworks.app.widget.WakewordStateStore
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.bridge.ActionApprovalStore
 import de.snowworks.ariana.notify.NotificationStore
@@ -89,6 +90,7 @@ class X88AuditActivity : AppCompatActivity() {
             appendLine("Stop-All blockiert: ${if (api.isBlocked()) "JA" else "NEIN"}")
             appendLine("Bridge: ${api.getConnection().label}")
             appendLine("Presence: ${PresenceSignalController.currentState()}")
+            appendLine("Wakeword: ${WakewordStateStore.status(this@X88AuditActivity)}")
             appendLine("NotificationStore count: $notificationCount")
             appendLine()
 

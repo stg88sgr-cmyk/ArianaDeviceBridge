@@ -22,8 +22,8 @@ android {
         applicationId = "de.snowworks.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 23
-        versionName = "1.7.5"
+        versionCode = 46
+        versionName = "1.14.6-rc1"
     }
 
     signingConfigs {
@@ -43,9 +43,7 @@ android {
             applicationIdSuffix = ".debug"
             buildConfigField("boolean", "BOOTSTRAP", "false")
             buildConfigField("boolean", "SAFE_INSTALL", "false")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("safeinstall") {
             initWith(getByName("debug"))
@@ -54,9 +52,7 @@ android {
             buildConfigField("boolean", "BOOTSTRAP", "false")
             buildConfigField("boolean", "SAFE_INSTALL", "true")
             matchingFallbacks += listOf("debug")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("sideload") {
             initWith(getByName("debug"))
@@ -65,27 +61,22 @@ android {
             buildConfigField("boolean", "BOOTSTRAP", "false")
             buildConfigField("boolean", "SAFE_INSTALL", "false")
             matchingFallbacks += listOf("debug")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("bootstrap") {
             initWith(getByName("debug"))
+            applicationIdSuffix = ".bootstrap"
             versionNameSuffix = "-bootstrap"
             buildConfigField("boolean", "BOOTSTRAP", "true")
             buildConfigField("boolean", "SAFE_INSTALL", "false")
             matchingFallbacks += listOf("debug")
-            if (arianaStableDebugSigningAvailable) {
-                signingConfig = signingConfigs.getByName("arianaStableDebug")
-            }
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         release {
             isMinifyEnabled = true
             buildConfigField("boolean", "BOOTSTRAP", "false")
             buildConfigField("boolean", "SAFE_INSTALL", "false")
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 
@@ -93,13 +84,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        viewBinding = false
-        buildConfig = true
-    }
+    kotlinOptions { jvmTarget = "17" }
+    buildFeatures { viewBinding = false; buildConfig = true }
 }
 
 dependencies {
@@ -110,6 +96,5 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-service:2.8.7")
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
-
     testImplementation("junit:junit:4.13.2")
 }

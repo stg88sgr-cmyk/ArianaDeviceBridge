@@ -10,7 +10,12 @@
     <string name="not_connected">Nicht verbunden</string>
     <string name="not_connected_detail">Berechtigung allein stellt keine Verbindung zu einem KI-Dienst her. Ein aktiver Kanal ist nicht implementiert.</string>
     <string name="widget_title">ARIANA X-88</string>
-    <string name="widget_description">Lokaler X-88-Status mit sicherem Ausschalten und Stop All.</string>
+    <string name="widget_description">Lokaler Ariana-Presence-Status für den Startbildschirm</string>
+    <string name="widget_avatar_description">ARIANA X-88</string>
+    <string name="widget_open_hint">Tippen zum Öffnen · Phone Core v1</string>
+    <string name="widget_speak">SPRECHEN</string>
     <string name="widget_open">ÖFFNEN</string>
     <string name="widget_stop_all">STOP ALL</string>
+    <string name="wakeword_channel_name">Ariana Wakeword</string>
+    <string name="wakeword_notification_title">Ariana hört auf dein Wakeword</string>
 </resources>

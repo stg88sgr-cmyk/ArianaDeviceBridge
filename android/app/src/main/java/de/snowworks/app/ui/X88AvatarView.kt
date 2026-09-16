@@ -15,7 +15,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * ARIANA X-88 procedural renderer v7.
+ * ARIANA X-88 procedural renderer v9.
  *
  * Design language:
  * - dark biomechanical shell
@@ -23,6 +23,8 @@ import kotlin.math.sin
  * - cyan eyes / sensor lines
  * - magenta reactive speech accents
  * - gold face/core geometry
+ * - subtle presence motion: gaze, head drift, breathing and mode energy
+ * - expression layer: brows, eye squint, state arcs and procedural viseme mouth shapes
  *
  * This remains a light Android View with no added rendering dependency.
  */
@@ -89,7 +91,26 @@ class X88AvatarView @JvmOverloads constructor(
         }
 
         val slow = sin(t * 2f * PI.toFloat() / 2.6f)
+        val breath = sin(t * 2f * PI.toFloat() / 4.8f)
         val pulse = 1f + 0.022f * slow
+        val energyHz = when (mode) {
+            Mode.IDLE -> 0.42f
+            Mode.LISTENING -> 1.15f
+            Mode.THINKING -> 0.78f
+            Mode.SPEAKING -> 2.1f
+            Mode.ATTENTION -> 1.45f
+            Mode.STOPPED -> 0.18f
+        }
+        val energyAmp = when (mode) {
+            Mode.SPEAKING -> 0.10f
+            Mode.LISTENING -> 0.075f
+            Mode.THINKING -> 0.065f
+            Mode.ATTENTION -> 0.08f
+            Mode.IDLE -> 0.045f
+            Mode.STOPPED -> 0.02f
+        }
+        val energy = (sin(t * 2f * PI.toFloat() * energyHz) + 1f) / 2f
+        val corePulse = 1f + energyAmp * energy
         val outerRadius = w.coerceAtMost(h) * 0.435f * pulse
 
         paint.style = Paint.Style.FILL
@@ -120,6 +141,82 @@ class X88AvatarView @JvmOverloads constructor(
         paint.strokeWidth = dp(0.8f)
         paint.color = withAlpha(cyan, 70)
         canvas.drawCircle(cx, cy, outerRadius * 0.83f, paint)
+
+        if (mode != Mode.IDLE && mode != Mode.STOPPED) {
+            val ring = RectF(
+                cx - outerRadius * 1.04f,
+                cy - outerRadius * 1.04f,
+                cx + outerRadius * 1.04f,
+                cy + outerRadius * 1.04f,
+            )
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = dp(if (mode == Mode.SPEAKING) 2.2f else 1.5f)
+            for (i in 0 until 3) {
+                val start = -90f + i * 120f + t * when (mode) {
+                    Mode.LISTENING -> 24f
+                    Mode.THINKING -> 14f
+                    Mode.SPEAKING -> 32f
+                    Mode.ATTENTION -> 8f
+                    else -> 12f
+                }
+                val sweep = when (mode) {
+                    Mode.LISTENING -> 42f
+                    Mode.THINKING -> 28f
+                    Mode.SPEAKING -> 54f
+                    Mode.ATTENTION -> 34f
+                    else -> 30f
+                }
+                paint.color = withAlpha(modeColor, 125 + i * 28)
+                canvas.drawArc(ring, start, sweep, false, paint)
+            }
+        }
+
+        val tiltBase = when (mode) {
+            Mode.LISTENING -> 1.0f
+            Mode.THINKING -> 0.45f
+            Mode.SPEAKING -> 0.75f
+            Mode.ATTENTION -> 0.25f
+            Mode.STOPPED -> 0f
+            Mode.IDLE -> 0.65f
+        }
+        val headTilt = tiltBase * sin(t * 0.55f)
+        val headBob = if (mode == Mode.STOPPED) 0f else h * 0.0032f * sin(t * 0.82f)
+        val gazeScale = when (mode) {
+            Mode.LISTENING -> 0.30f
+            Mode.THINKING -> 1.0f
+            Mode.SPEAKING -> 0.55f
+            Mode.ATTENTION -> 0.15f
+            Mode.STOPPED -> 0f
+            Mode.IDLE -> 0.70f
+        }
+        val gazeX = w * 0.010f * gazeScale * sin(t * 0.67f)
+        val gazeY = h * 0.0045f * gazeScale * sin(t * 0.43f + 1.1f)
+        val browLift = when (mode) {
+            Mode.LISTENING -> h * 0.009f
+            Mode.THINKING -> h * 0.004f
+            Mode.SPEAKING -> h * 0.002f
+            Mode.ATTENTION -> -h * 0.002f
+            Mode.STOPPED -> -h * 0.004f
+            Mode.IDLE -> h * 0.003f
+        }
+        val browPinch = when (mode) {
+            Mode.ATTENTION -> h * 0.010f
+            Mode.THINKING -> h * 0.004f
+            Mode.LISTENING -> -h * 0.003f
+            else -> 0f
+        }
+        val eyeSquint = when (mode) {
+            Mode.LISTENING -> 1.08f
+            Mode.THINKING -> 0.90f
+            Mode.SPEAKING -> 0.96f
+            Mode.ATTENTION -> 0.72f
+            Mode.STOPPED -> 0.55f
+            Mode.IDLE -> 1f
+        }
+
+        canvas.save()
+        canvas.translate(0f, headBob)
+        canvas.rotate(headTilt, cx, h * 0.46f)
 
         paint.strokeWidth = dp(1.8f)
         paint.color = withAlpha(gold, 220)
@@ -221,8 +318,9 @@ class X88AvatarView @JvmOverloads constructor(
             1f
         }
 
-        drawEye(canvas, cx - w * 0.085f, h * 0.405f, blink)
-        drawEye(canvas, cx + w * 0.085f, h * 0.405f, blink)
+        drawEye(canvas, cx - w * 0.085f, h * 0.405f, blink, gazeX, gazeY, eyeSquint)
+        drawEye(canvas, cx + w * 0.085f, h * 0.405f, blink, gazeX, gazeY, eyeSquint)
+        drawBrows(canvas, cx, h, w, browLift, browPinch)
 
         if (mode == Mode.LISTENING) {
             val scan = (sin(t * 3.2f) + 1f) / 2f
@@ -237,20 +335,9 @@ class X88AvatarView @JvmOverloads constructor(
         paint.color = withAlpha(gold, 85)
         canvas.drawLine(cx, h * 0.43f, cx, h * 0.535f, paint)
 
-        val mouthAmp = if (mode == Mode.SPEAKING) {
-            0.006f + 0.011f * ((sin(t * 18f) + 1f) / 2f)
-        } else {
-            0.003f
-        }
-        val mouth = RectF(
-            cx - w * 0.055f,
-            h * 0.575f - h * mouthAmp,
-            cx + w * 0.055f,
-            h * 0.575f + h * mouthAmp,
-        )
-        paint.style = Paint.Style.FILL
-        paint.color = if (mode == Mode.SPEAKING) magenta else withAlpha(gold, 180)
-        canvas.drawRoundRect(mouth, dp(3f), dp(3f), paint)
+        drawMouth(canvas, cx, h, w, t)
+
+        canvas.restore()
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = w * 0.052f
@@ -265,10 +352,11 @@ class X88AvatarView @JvmOverloads constructor(
         paint.color = withAlpha(magenta, 130)
         canvas.drawLine(cx + w * 0.035f, h * 0.67f, cx + w * 0.055f, h * 0.785f, paint)
 
+        val shoulderLift = h * 0.004f * breath
         paint.strokeWidth = w * 0.080f
         paint.color = withAlpha(white, 225)
-        canvas.drawLine(cx - w * 0.11f, h * 0.79f, cx - w * 0.34f, h * 0.88f, paint)
-        canvas.drawLine(cx + w * 0.11f, h * 0.79f, cx + w * 0.34f, h * 0.88f, paint)
+        canvas.drawLine(cx - w * 0.11f, h * 0.79f + shoulderLift, cx - w * 0.34f, h * 0.88f + shoulderLift, paint)
+        canvas.drawLine(cx + w * 0.11f, h * 0.79f + shoulderLift, cx + w * 0.34f, h * 0.88f + shoulderLift, paint)
 
         paint.strokeWidth = dp(2.0f)
         paint.color = withAlpha(steel, 230)
@@ -276,16 +364,16 @@ class X88AvatarView @JvmOverloads constructor(
             val d = i * w * 0.06f
             canvas.drawLine(
                 cx - w * 0.17f - d,
-                h * 0.815f + d * 0.22f,
+                h * 0.815f + d * 0.22f + shoulderLift,
                 cx - w * 0.15f - d,
-                h * 0.875f + d * 0.22f,
+                h * 0.875f + d * 0.22f + shoulderLift,
                 paint,
             )
             canvas.drawLine(
                 cx + w * 0.17f + d,
-                h * 0.815f + d * 0.22f,
+                h * 0.815f + d * 0.22f + shoulderLift,
                 cx + w * 0.15f + d,
-                h * 0.875f + d * 0.22f,
+                h * 0.875f + d * 0.22f + shoulderLift,
                 paint,
             )
         }
@@ -304,18 +392,36 @@ class X88AvatarView @JvmOverloads constructor(
 
         paint.style = Paint.Style.FILL
         paint.color = withAlpha(modeColor, 34)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.070f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.070f * corePulse, paint)
         paint.color = withAlpha(cyan, 36)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.050f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.050f * corePulse, paint)
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(1.6f)
         paint.color = if (mode == Mode.STOPPED) red else gold
-        canvas.drawCircle(cx, h * 0.83f, w * 0.029f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.029f * corePulse, paint)
 
         paint.strokeWidth = dp(0.8f)
         paint.color = withAlpha(magenta, 130)
-        canvas.drawCircle(cx, h * 0.83f, w * 0.020f * pulse, paint)
+        canvas.drawCircle(cx, h * 0.83f, w * 0.020f * corePulse, paint)
+
+        if (mode == Mode.THINKING) {
+            paint.style = Paint.Style.FILL
+            for (i in 0 until 3) {
+                val a = t * 1.45f + i * (2f * PI.toFloat() / 3f)
+                paint.color = when (i) {
+                    0 -> withAlpha(cyan, 210)
+                    1 -> withAlpha(gold, 210)
+                    else -> withAlpha(magenta, 190)
+                }
+                canvas.drawCircle(
+                    cx + cos(a) * w * 0.052f,
+                    h * 0.83f + sin(a) * w * 0.052f,
+                    w * 0.0065f,
+                    paint,
+                )
+            }
+        }
 
         paint.style = Paint.Style.FILL
         paint.textAlign = Paint.Align.CENTER
@@ -326,9 +432,17 @@ class X88AvatarView @JvmOverloads constructor(
         if (isAttachedToWindow) postInvalidateOnAnimation()
     }
 
-    private fun drawEye(canvas: Canvas, centerX: Float, centerY: Float, blink: Float) {
+    private fun drawEye(
+        canvas: Canvas,
+        centerX: Float,
+        centerY: Float,
+        blink: Float,
+        gazeX: Float,
+        gazeY: Float,
+        squint: Float,
+    ) {
         val eyeW = width * 0.055f
-        val eyeH = height * 0.013f * blink
+        val eyeH = height * 0.013f * blink * squint
 
         paint.style = Paint.Style.FILL
         paint.color = withAlpha(dark, 230)
@@ -354,7 +468,92 @@ class X88AvatarView @JvmOverloads constructor(
         )
 
         paint.color = withAlpha(white, 220)
-        canvas.drawCircle(centerX, centerY, width * 0.008f * blink, paint)
+        canvas.drawCircle(
+            centerX + gazeX,
+            centerY + gazeY,
+            width * 0.008f * blink,
+            paint,
+        )
+    }
+
+    private fun drawBrows(
+        canvas: Canvas,
+        cx: Float,
+        h: Float,
+        w: Float,
+        lift: Float,
+        pinch: Float,
+    ) {
+        val y = h * 0.355f - lift
+        val left = cx - w * 0.085f
+        val right = cx + w * 0.085f
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(if (mode == Mode.ATTENTION) 2.0f else 1.35f)
+        paint.strokeCap = Paint.Cap.ROUND
+        paint.color = when (mode) {
+            Mode.ATTENTION, Mode.STOPPED -> withAlpha(red, 185)
+            Mode.LISTENING -> withAlpha(cyan, 175)
+            Mode.SPEAKING -> withAlpha(magenta, 160)
+            else -> withAlpha(gold, 150)
+        }
+        canvas.drawLine(left - w * 0.052f, y + pinch, left + w * 0.040f, y - pinch, paint)
+        canvas.drawLine(right - w * 0.040f, y - pinch, right + w * 0.052f, y + pinch, paint)
+    }
+
+    private fun drawMouth(canvas: Canvas, cx: Float, h: Float, w: Float, t: Float) {
+        if (mode != Mode.SPEAKING) {
+            paint.style = Paint.Style.FILL
+            paint.color = withAlpha(gold, 180)
+            val mouth = RectF(
+                cx - w * 0.050f,
+                h * 0.572f,
+                cx + w * 0.050f,
+                h * 0.578f,
+            )
+            canvas.drawRoundRect(mouth, dp(3f), dp(3f), paint)
+            return
+        }
+
+        val viseme = (t * 7.5f).toInt() % 5
+        val halfW = when (viseme) {
+            0 -> w * 0.040f
+            1 -> w * 0.061f
+            2 -> w * 0.047f
+            3 -> w * 0.034f
+            else -> w * 0.054f
+        }
+        val halfH = when (viseme) {
+            0 -> h * 0.007f
+            1 -> h * 0.011f
+            2 -> h * 0.021f
+            3 -> h * 0.018f
+            else -> h * 0.014f
+        }
+        val mouth = RectF(
+            cx - halfW,
+            h * 0.575f - halfH,
+            cx + halfW,
+            h * 0.575f + halfH,
+        )
+
+        paint.style = Paint.Style.FILL
+        paint.color = withAlpha(dark, 245)
+        canvas.drawRoundRect(mouth, dp(5f), dp(5f), paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = dp(1.25f)
+        paint.color = withAlpha(magenta, 235)
+        canvas.drawRoundRect(mouth, dp(5f), dp(5f), paint)
+
+        paint.strokeWidth = dp(0.8f)
+        paint.color = withAlpha(white, 120)
+        canvas.drawLine(
+            cx - halfW * 0.65f,
+            h * 0.575f,
+            cx + halfW * 0.65f,
+            h * 0.575f,
+            paint,
+        )
     }
 
     private fun modeLabel(mode: Mode): String = when (mode) {

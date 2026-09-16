@@ -1,49 +1,34 @@
 package de.snowworks.app
 
 import android.app.Application
-import android.util.Log
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderManager
+import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
+import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.session.SessionRegistry
-import de.snowworks.ariana.thermal.ThermalSafetyController
 
 class SnowworksApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        // No device/session restore after process death.
+        SessionRegistry.clear()
+        DialogueRouter.initialize(this)
 
-        // App boot must never crash because an optional subsystem fails.
-        runCatching { SessionRegistry.clear() }
-            .onFailure { Log.e(TAG, "SessionRegistry.clear failed", it) }
-
-        // Thermal safety starts before bridge/provider activation so a hot device
-        // cannot start heavyweight local work during process boot.
-        runCatching { ThermalSafetyController.start(this) }
-            .onFailure { Log.e(TAG, "ThermalSafetyController.start failed", it) }
-
-        val gate = runCatching { ArianaGate(this) }
-            .onFailure { Log.e(TAG, "ArianaGate init failed", it) }
-            .getOrNull()
-
-        if (gate != null && gate.isMasterEnabled && !gate.isBlocked) {
-            runCatching { LocalBridgeServer.start(this) }
-                .onFailure { Log.e(TAG, "LocalBridgeServer.start failed", it) }
+        // Restore only the local loopback core when the user-controlled master gate
+        // was already enabled and Stop-All has not blocked new actions.
+        val gate = ArianaGate(this)
+        if (gate.isMasterEnabled && !gate.isBlocked) {
+            LocalBridgeServer.start(this)
         }
 
-        // Provider activation is optional. A broken model/provider must not block UI startup.
-        // LocalAiProviderManager also checks the live thermal policy before loading a model.
-        val localActivated = runCatching { LocalAiProviderManager.activateConfigured(this) }
-            .onFailure { Log.e(TAG, "Local AI provider activation failed", it) }
-            .getOrDefault(false)
-
-        if (!localActivated) {
-            runCatching { AiProviderManager.activateConfigured(this) }
-                .onFailure { Log.e(TAG, "Remote AI provider activation failed", it) }
+        // Prefer Ariana's local providers. A configured HTTPS provider remains
+        // available as a secondary multi-AI reviewer when local Ariana is active.
+        if (!LoopbackArianaProviderManager.activateIfAvailable() &&
+            !LocalAiProviderManager.activateConfigured(this)
+        ) {
+            AiProviderManager.activateConfigured(this)
         }
-    }
-
-    private companion object {
-        const val TAG = "SnowworksApp"
     }
 }

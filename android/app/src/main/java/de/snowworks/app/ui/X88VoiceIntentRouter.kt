@@ -21,12 +21,14 @@ object X88VoiceIntentRouter {
         STOP_ALL,
         MASTER_ON,
         MASTER_OFF,
+        CONVERSATION_STOP,
     }
 
     fun classify(text: String): Intent {
         val n = normalize(text)
 
         return when {
+            any(n, "gespraech beenden", "gespraech stoppen", "conversation stop", "hoer auf zuzuhoeren") -> Intent.CONVERSATION_STOP
             any(n, "alles stoppen", "stop all", "not aus", "notaus") -> Intent.STOP_ALL
 
             any(n, "kamera an", "kamera starten", "starte kamera") -> Intent.CAMERA_ON

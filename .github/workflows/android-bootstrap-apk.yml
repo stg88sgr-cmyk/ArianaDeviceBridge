@@ -23,19 +23,47 @@ jobs:
 
       - name: Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
       - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.11.1"
 
+      - name: Prepare stable bootstrap signing
+        shell: bash
+        env:
+          ARIANA_DEBUG_KEYSTORE_B64: ${{ secrets.ARIANA_DEBUG_KEYSTORE_B64 }}
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$ARIANA_DEBUG_KEYSTORE_B64" || -z "$ARIANA_DEBUG_STORE_PASSWORD" || -z "$ARIANA_DEBUG_KEY_ALIAS" || -z "$ARIANA_DEBUG_KEY_PASSWORD" ]]; then
+            echo "::error::Stable ARIANA signing is required for bootstrap builds."
+            exit 1
+          fi
+          printf '%s' "$ARIANA_DEBUG_KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/ariana-debug.jks"
+          chmod 600 "$RUNNER_TEMP/ariana-debug.jks"
+          echo "ARIANA_DEBUG_KEYSTORE_PATH=$RUNNER_TEMP/ariana-debug.jks" >> "$GITHUB_ENV"
+          echo "ARIANA_STABLE_SIGNING=enabled" >> "$GITHUB_ENV"
+
       - name: Bootstrap manifest source gate
         run: |
           grep -F 'ArianaNotificationListener' android/app/src/bootstrap/AndroidManifest.xml
           grep -F 'tools:node="remove"' android/app/src/bootstrap/AndroidManifest.xml
 
+      - name: Phone Core v1 unit gate
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
       - name: Assemble bootstrap APK
         working-directory: android
+        env:
+          ARIANA_DEBUG_STORE_PASSWORD: ${{ secrets.ARIANA_DEBUG_STORE_PASSWORD }}
+          ARIANA_DEBUG_KEY_ALIAS: ${{ secrets.ARIANA_DEBUG_KEY_ALIAS }}
+          ARIANA_DEBUG_KEY_PASSWORD: ${{ secrets.ARIANA_DEBUG_KEY_PASSWORD }}
         run: gradle :app:assembleBootstrap --stacktrace
 
       - name: Verify merged bootstrap manifest
@@ -45,6 +73,8 @@ jobs:
           test -n "$APK"
           test -n "$APKANALYZER"
           "$APKANALYZER" manifest print "$APK" > /tmp/bootstrap-manifest.xml
+          grep -F 'package="de.snowworks.app.bootstrap"' /tmp/bootstrap-manifest.xml
+          test "${ARIANA_STABLE_SIGNING:-disabled}" = "enabled"
           ! grep -Fq 'ArianaNotificationListener' /tmp/bootstrap-manifest.xml
           ! grep -Fq 'android.permission.BIND_NOTIFICATION_LISTENER_SERVICE' /tmp/bootstrap-manifest.xml
           ! grep -Fq 'android.permission.ACCESS_FINE_LOCATION' /tmp/bootstrap-manifest.xml
