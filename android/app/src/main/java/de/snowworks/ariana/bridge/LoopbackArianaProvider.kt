@@ -4,6 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicInteger
 
 /** Hard-coded same-device Ariana Core client. */
 class LoopbackArianaProvider {
@@ -19,21 +20,39 @@ class LoopbackArianaProvider {
         val timestampSeconds: Double? = null,
     )
 
-    fun health(): Health = runCatching {
-        val c = open("/health", "GET", 700, 700)
-        try {
-            if (c.responseCode != 200) return@runCatching Health(false)
-            val body = c.inputStream.bufferedReader().use { it.readText() }
-            val root = JSONObject(body)
-            Health(
-                online = root.optString("status") == "ok",
-                generation = root.optInt("generation").takeIf { root.has("generation") },
-                branch = root.optString("branch").takeIf { it.isNotBlank() },
-            )
-        } finally {
-            c.disconnect()
+    fun health(): Health {
+        val probed = runCatching {
+            val c = open("/health", "GET", HEALTH_CONNECT_TIMEOUT_MS, HEALTH_READ_TIMEOUT_MS)
+            try {
+                if (c.responseCode != 200) return@runCatching Health(false)
+                val body = c.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(body)
+                Health(
+                    online = root.optString("status") == "ok",
+                    generation = root.optInt("generation").takeIf { root.has("generation") },
+                    branch = root.optString("branch").takeIf { it.isNotBlank() },
+                )
+            } finally {
+                c.disconnect()
+            }
+        }.getOrElse { Health(false) }
+
+        if (probed.online) {
+            lastHealthy = probed
+            return probed
         }
-    }.getOrElse { Health(false) }
+
+        // llama.cpp/Termux can serialize requests while inference is running. A short
+        // /health probe may time out although the core is still actively generating.
+        // Preserve the last confirmed healthy state during our own in-flight request
+        // so the UI does not falsely flap to CORE OFFLINE mid-answer.
+        if (activeGenerations.get() > 0) {
+            val cached = lastHealthy
+            return if (cached.online) cached else Health(true, branch = "busy")
+        }
+
+        return Health(false)
+    }
 
     fun isHealthy(): Boolean = health().online
 
@@ -71,35 +90,40 @@ class LoopbackArianaProvider {
             .toString()
             .toByteArray(Charsets.UTF_8)
 
-        val c = open("/v1/chat/completions", "POST", 1500, 120000)
+        activeGenerations.incrementAndGet()
         return try {
-            c.doOutput = true
-            c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
-            c.setFixedLengthStreamingMode(payload.size)
-            c.outputStream.use { it.write(payload) }
-            val status = c.responseCode
-            if (status !in 200..299) {
-                throw DialogueRouter.ProviderException("ARIANA_CORE_HTTP_$status")
+            val c = open("/v1/chat/completions", "POST", 1500, 120000)
+            try {
+                c.doOutput = true
+                c.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+                c.setFixedLengthStreamingMode(payload.size)
+                c.outputStream.use { it.write(payload) }
+                val status = c.responseCode
+                if (status !in 200..299) {
+                    throw DialogueRouter.ProviderException("ARIANA_CORE_HTTP_$status")
+                }
+                val body = c.inputStream.bufferedReader().use { it.readText() }
+                val root = JSONObject(body)
+                val reply = root
+                    .getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                    .trim()
+                    .take(DialogueRouter.MAX_REPLY_CHARS)
+                if (reply.isBlank()) {
+                    throw DialogueRouter.ProviderException("ARIANA_CORE_EMPTY_REPLY")
+                }
+                reply
+            } catch (error: DialogueRouter.ProviderException) {
+                throw error
+            } catch (error: Exception) {
+                throw DialogueRouter.ProviderException("ARIANA_CORE_UNAVAILABLE", error)
+            } finally {
+                c.disconnect()
             }
-            val body = c.inputStream.bufferedReader().use { it.readText() }
-            val root = JSONObject(body)
-            val reply = root
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
-                .trim()
-                .take(DialogueRouter.MAX_REPLY_CHARS)
-            if (reply.isBlank()) {
-                throw DialogueRouter.ProviderException("ARIANA_CORE_EMPTY_REPLY")
-            }
-            reply
-        } catch (error: DialogueRouter.ProviderException) {
-            throw error
-        } catch (error: Exception) {
-            throw DialogueRouter.ProviderException("ARIANA_CORE_UNAVAILABLE", error)
         } finally {
-            c.disconnect()
+            activeGenerations.decrementAndGet()
         }
     }
 
@@ -111,4 +135,11 @@ class LoopbackArianaProvider {
             useCaches = false
             instanceFollowRedirects = false
         }
+
+    private companion object {
+        const val HEALTH_CONNECT_TIMEOUT_MS = 700
+        const val HEALTH_READ_TIMEOUT_MS = 700
+        val activeGenerations = AtomicInteger(0)
+        @Volatile var lastHealthy = Health(false)
+    }
 }
