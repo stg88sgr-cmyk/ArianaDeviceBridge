@@ -12,6 +12,7 @@ object AiProviderManager {
         val endpointHost: String?,
         val model: String?,
         val apiKeyPresent: Boolean,
+        val recoveryAvailable: Boolean,
     )
 
     @Synchronized
@@ -70,11 +71,28 @@ object AiProviderManager {
         }
     }
 
+    @Synchronized
+    fun restorePrevious(context: Context): Boolean {
+        val restored = SecureAiProviderStore(context).restorePrevious()
+        if (!restored) return false
+        AiProviderHealth.reset()
+        return activateConfigured(context)
+    }
+
     fun status(context: Context): Status {
-        val config = SecureAiProviderStore(context).load()
+        val store = SecureAiProviderStore(context)
+        val config = store.load()
         val activeId = DialogueRouter.providerId()
         if (config == null) {
-            return Status(false, false, activeId, null, null, false)
+            return Status(
+                configured = false,
+                active = false,
+                providerId = activeId,
+                endpointHost = null,
+                model = null,
+                apiKeyPresent = false,
+                recoveryAvailable = store.hasRecoverySnapshot(),
+            )
         }
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
         val configuredProviderId = host?.takeIf { it.isNotBlank() }?.let { providerId(it, config.model) }
@@ -85,6 +103,7 @@ object AiProviderManager {
             endpointHost = host,
             model = config.model,
             apiKeyPresent = config.apiKey.isNotBlank(),
+            recoveryAvailable = store.hasRecoverySnapshot(),
         )
     }
 
