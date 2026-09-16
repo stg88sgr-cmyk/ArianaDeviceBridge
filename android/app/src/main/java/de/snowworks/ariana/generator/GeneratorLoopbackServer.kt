@@ -34,6 +34,10 @@ object GeneratorLoopbackServer {
         if (!gate.isMasterEnabled || gate.isBlocked) return
         val token = BridgeTokenStore(app).getOrCreate()
 
+        // A process death can leave a persisted job in RUNNING although no worker
+        // survived. Mark those jobs explicitly instead of pretending they still run.
+        GeneratorJobStore(app).recoverInterruptedJobs()
+
         running.set(true)
         worker = Thread({
             try {
