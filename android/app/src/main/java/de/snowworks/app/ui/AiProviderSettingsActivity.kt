@@ -11,28 +11,47 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
-import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.ClaudeDialogueProvider
+import de.snowworks.ariana.bridge.CloudProviderRegistry
+import de.snowworks.ariana.bridge.DialogueRouter
+import de.snowworks.ariana.bridge.HttpsDialogueProvider
 import de.snowworks.ariana.bridge.SecureAiProviderStore
 import java.util.concurrent.Executors
 
 class AiProviderSettingsActivity : AppCompatActivity() {
-    private lateinit var endpointInput: EditText
-    private lateinit var modelInput: EditText
-    private lateinit var apiKeyInput: EditText
-    private lateinit var statusView: TextView
-    private lateinit var testButton: MaterialButton
-    private var currentKey: String = ""
-    private val probeExecutor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ArianaProviderProbe").apply { isDaemon = true } }
+    private lateinit var metaEndpoint: EditText
+    private lateinit var metaModel: EditText
+    private lateinit var metaKey: EditText
+    private lateinit var metaStatus: TextView
+    private lateinit var metaTest: MaterialButton
+
+    private lateinit var claudeEndpoint: EditText
+    private lateinit var claudeModel: EditText
+    private lateinit var claudeKey: EditText
+    private lateinit var claudeStatus: TextView
+    private lateinit var claudeTest: MaterialButton
+
+    private var currentMetaKey: String = ""
+    private var currentClaudeKey: String = ""
+    private val probeExecutor = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "ArianaProviderProbe").apply { isDaemon = true }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(buildUi())
-        loadCurrent()
+        loadProfiles()
     }
 
-    override fun onResume() { super.onResume(); refreshStatus() }
-    override fun onDestroy() { probeExecutor.shutdownNow(); super.onDestroy() }
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()
+    }
+
+    override fun onDestroy() {
+        probeExecutor.shutdownNow()
+        super.onDestroy()
+    }
 
     private fun buildUi(): ScrollView {
         val density = resources.displayMetrics.density
@@ -42,122 +61,242 @@ class AiProviderSettingsActivity : AppCompatActivity() {
             setBackgroundColor(Color.parseColor("#0B0F12"))
             setPadding(dp(20))
         }
-        root.addView(label("X-88 KI-PROVIDER", 12f, Color.parseColor("#8A9AA6")))
-        root.addView(label("Cloud-KI-Provider", 28f, Color.parseColor("#E9EEF1")))
-        root.addView(label("Ariana bleibt Identität und Steuerung. Die Bridge kann im Hintergrund einen OpenAI-kompatiblen Provider oder Claude über die native Anthropic Messages API nutzen.", 14f, Color.parseColor("#AAB8C2")))
 
-        endpointInput = EditText(this).apply {
-            hint = "HTTPS-Endpunkt"
-            setTextColor(Color.parseColor("#E9EEF1")); setHintTextColor(Color.parseColor("#687781"))
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI; maxLines = 2
-        }
-        modelInput = EditText(this).apply {
-            hint = "Modell-ID"; setTextColor(Color.parseColor("#E9EEF1")); setHintTextColor(Color.parseColor("#687781")); inputType = InputType.TYPE_CLASS_TEXT; maxLines = 1
-        }
-        apiKeyInput = EditText(this).apply {
-            hint = "API-Key (leer = vorhandenen behalten)"; setTextColor(Color.parseColor("#E9EEF1")); setHintTextColor(Color.parseColor("#687781")); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD; maxLines = 1
-        }
-        statusView = label("", 13f, Color.parseColor("#C5D4DC"))
-        root.addView(endpointInput); root.addView(modelInput); root.addView(apiKeyInput); root.addView(statusView)
+        root.addView(label("X-88 MULTI-KI", 12f, Color.parseColor("#8A9AA6")))
+        root.addView(label("Provider-Konsole", 28f, Color.parseColor("#E9EEF1")))
+        root.addView(label("Ariana bleibt Identität und Steuerung. Meta und Claude werden getrennt verschlüsselt gespeichert und vom Smart-AI-Router je nach Aufgabe ausgewählt.", 14f, Color.parseColor("#AAB8C2")))
 
-        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = "Claude Sonnet vorbereiten"; setOnClickListener { applyClaudePreset() }
+        root.addView(sectionTitle("CLAUDE · CODE / ARCHITEKTUR"))
+        claudeEndpoint = endpointInput(ClaudeDialogueProvider.ANTHROPIC_ENDPOINT)
+        claudeModel = modelInput(CLAUDE_MODEL)
+        claudeKey = keyInput()
+        claudeStatus = label("", 13f, Color.parseColor("#C5D4DC"))
+        root.addView(claudeEndpoint)
+        root.addView(claudeModel)
+        root.addView(claudeKey)
+        root.addView(claudeStatus)
+        root.addView(MaterialButton(this).apply {
+            text = "Claude speichern"
+            setOnClickListener { saveClaude() }
         })
-        root.addView(label("Claude-Preset: Anthropic Messages API. Der API-Key wird nicht vorbelegt und erst beim Speichern verschlüsselt abgelegt.", 12f, Color.parseColor("#8FA4AF")))
-
-        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = "Meta Muse Spark 1.3 vorbereiten"; setOnClickListener { applyMetaPreset() }
-        })
-        root.addView(label("Meta-Preset: API-Key wird nicht vorbelegt und erst beim Speichern verschlüsselt abgelegt.", 12f, Color.parseColor("#8FA4AF")))
-        root.addView(MaterialButton(this).apply { text = "Speichern und aktivieren"; setOnClickListener { saveAndActivate() } })
-        testButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = "Gespeicherte KI-Verbindung testen"; setOnClickListener { testConfiguredProvider() }
+        claudeTest = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Claude testen"
+            setOnClickListener { testClaude() }
         }
-        root.addView(testButton)
-        root.addView(label("Der Test nutzt nur die verschlüsselt gespeicherte Konfiguration. Er speichert die Testantwort nicht.", 12f, Color.parseColor("#8FA4AF")))
+        root.addView(claudeTest)
         root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = "Letzten Provider-Stand wiederherstellen"; setOnClickListener { restorePrevious() }
-        })
-        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-            text = "Provider entfernen"
+            text = "Claude entfernen"
             setOnClickListener {
-                AiProviderManager.clear(this@AiProviderSettingsActivity)
-                currentKey = ""; endpointInput.setText(""); modelInput.setText(""); apiKeyInput.setText("")
-                toast("KI-Provider entfernt. Der vorherige Stand bleibt als Recovery-Snapshot erhalten.")
+                CloudProviderRegistry(this@AiProviderSettingsActivity).clear(CloudProviderRegistry.Slot.CLAUDE)
+                currentClaudeKey = ""
+                claudeKey.setText("")
+                toast("Claude-Profil entfernt.")
                 refreshStatus()
             }
         })
-        root.addView(label("Sicherheit: HTTPS ist Pflicht. Localhost, IP-Adressen, .local-Ziele und private Netzwerkadressen werden blockiert. Claude wird zusätzlich fest auf api.anthropic.com/v1/messages begrenzt. Konfiguration und Recovery-Stand werden mit Android Keystore AES/GCM verschlüsselt gespeichert.", 12f, Color.parseColor("#7F919D")))
-        return ScrollView(this).apply { setBackgroundColor(Color.parseColor("#0B0F12")); addView(root) }
-    }
 
-    private fun applyClaudePreset() {
-        endpointInput.setText(ClaudeDialogueProvider.ANTHROPIC_ENDPOINT)
-        modelInput.setText(CLAUDE_MODEL)
-        toast("Claude vorbereitet. Jetzt Anthropic API-Key eintragen und speichern.")
-    }
-
-    private fun applyMetaPreset() {
-        endpointInput.setText(META_CHAT_COMPLETIONS_ENDPOINT)
-        modelInput.setText(META_MODEL)
-        toast("Meta Muse Spark 1.3 vorbereitet. Jetzt nur noch den Meta Model API-Key eintragen und speichern.")
-    }
-
-    private fun loadCurrent() {
-        val config = SecureAiProviderStore(this).load()
-        if (config != null) { endpointInput.setText(config.endpoint); modelInput.setText(config.model); currentKey = config.apiKey }
-        else { endpointInput.setText(""); modelInput.setText(""); currentKey = "" }
-        apiKeyInput.setText(""); refreshStatus()
-    }
-
-    private fun saveAndActivate() {
-        val endpoint = endpointInput.text?.toString()?.trim().orEmpty()
-        val model = modelInput.text?.toString()?.trim().orEmpty()
-        val newKey = apiKeyInput.text?.toString()?.trim().orEmpty()
-        val key = if (newKey.isNotEmpty()) newKey else currentKey
-        val activated = runCatching { AiProviderManager.configure(this, endpoint, model, key) }.getOrElse {
-            toast("Provider-Konfiguration ungültig: ${it.message ?: "unbekannter Fehler"}"); false
+        root.addView(sectionTitle("META · GEGENCHECK / ZWEITE MEINUNG"))
+        metaEndpoint = endpointInput(META_CHAT_COMPLETIONS_ENDPOINT)
+        metaModel = modelInput(META_MODEL)
+        metaKey = keyInput()
+        metaStatus = label("", 13f, Color.parseColor("#C5D4DC"))
+        root.addView(metaEndpoint)
+        root.addView(metaModel)
+        root.addView(metaKey)
+        root.addView(metaStatus)
+        root.addView(MaterialButton(this).apply {
+            text = "Meta speichern"
+            setOnClickListener { saveMeta() }
+        })
+        metaTest = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Meta testen"
+            setOnClickListener { testMeta() }
         }
-        if (!activated) { toast("Provider konnte nicht registriert werden."); refreshStatus(); return }
-        currentKey = key; apiKeyInput.setText("")
-        toast("KI-Provider registriert. Netzwerk wird erst beim Dialog oder Verbindungstest genutzt.")
+        root.addView(metaTest)
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Meta entfernen"
+            setOnClickListener {
+                CloudProviderRegistry(this@AiProviderSettingsActivity).clear(CloudProviderRegistry.Slot.META)
+                currentMetaKey = ""
+                metaKey.setText("")
+                toast("Meta-Profil entfernt.")
+                refreshStatus()
+            }
+        })
+
+        root.addView(label("Sicherheit: Beide Profile liegen getrennt verschlüsselt im Android Keystore. API-Schlüssel werden in der Oberfläche nie wieder angezeigt. CloudAiPolicy kann sensible Inhalte weiterhin lokal festhalten.", 12f, Color.parseColor("#7F919D")))
+
+        return ScrollView(this).apply {
+            setBackgroundColor(Color.parseColor("#0B0F12"))
+            addView(root)
+        }
+    }
+
+    private fun endpointInput(defaultValue: String) = EditText(this).apply {
+        hint = "HTTPS-Endpunkt"
+        setText(defaultValue)
+        setTextColor(Color.parseColor("#E9EEF1"))
+        setHintTextColor(Color.parseColor("#687781"))
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        maxLines = 2
+    }
+
+    private fun modelInput(defaultValue: String) = EditText(this).apply {
+        hint = "Modell-ID"
+        setText(defaultValue)
+        setTextColor(Color.parseColor("#E9EEF1"))
+        setHintTextColor(Color.parseColor("#687781"))
+        inputType = InputType.TYPE_CLASS_TEXT
+        maxLines = 1
+    }
+
+    private fun keyInput() = EditText(this).apply {
+        hint = "API-Key (leer = vorhandenen behalten)"
+        setTextColor(Color.parseColor("#E9EEF1"))
+        setHintTextColor(Color.parseColor("#687781"))
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        maxLines = 1
+    }
+
+    private fun loadProfiles() {
+        val registry = CloudProviderRegistry(this).also { it.migrateActiveIfNeeded() }
+        registry.load(CloudProviderRegistry.Slot.CLAUDE)?.let {
+            claudeEndpoint.setText(it.endpoint)
+            claudeModel.setText(it.model)
+            currentClaudeKey = it.apiKey
+        }
+        registry.load(CloudProviderRegistry.Slot.META)?.let {
+            metaEndpoint.setText(it.endpoint)
+            metaModel.setText(it.model)
+            currentMetaKey = it.apiKey
+        }
+        claudeKey.setText("")
+        metaKey.setText("")
         refreshStatus()
     }
 
-    private fun testConfiguredProvider() {
-        if (!::testButton.isInitialized || !testButton.isEnabled) return
-        testButton.isEnabled = false; testButton.text = "KI-Verbindung wird getestet …"
+    private fun saveClaude() {
+        val newKey = claudeKey.text?.toString()?.trim().orEmpty()
+        val key = if (newKey.isNotEmpty()) newKey else currentClaudeKey
+        val config = SecureAiProviderStore.Config(
+            endpoint = claudeEndpoint.text?.toString()?.trim().orEmpty(),
+            model = claudeModel.text?.toString()?.trim().orEmpty(),
+            apiKey = key,
+        )
+        val saved = runCatching {
+            CloudProviderRegistry(this).save(CloudProviderRegistry.Slot.CLAUDE, config)
+            true
+        }.getOrElse {
+            toast("Claude-Konfiguration ungültig: ${it.message ?: "unbekannter Fehler"}")
+            false
+        }
+        if (!saved) return
+        currentClaudeKey = key
+        claudeKey.setText("")
+        toast("Claude-Profil gespeichert.")
+        refreshStatus()
+    }
+
+    private fun saveMeta() {
+        val newKey = metaKey.text?.toString()?.trim().orEmpty()
+        val key = if (newKey.isNotEmpty()) newKey else currentMetaKey
+        val config = SecureAiProviderStore.Config(
+            endpoint = metaEndpoint.text?.toString()?.trim().orEmpty(),
+            model = metaModel.text?.toString()?.trim().orEmpty(),
+            apiKey = key,
+        )
+        val saved = runCatching {
+            CloudProviderRegistry(this).save(CloudProviderRegistry.Slot.META, config)
+            true
+        }.getOrElse {
+            toast("Meta-Konfiguration ungültig: ${it.message ?: "unbekannter Fehler"}")
+            false
+        }
+        if (!saved) return
+        currentMetaKey = key
+        metaKey.setText("")
+        toast("Meta-Profil gespeichert.")
+        refreshStatus()
+    }
+
+    private fun testClaude() {
+        if (!claudeTest.isEnabled) return
+        claudeTest.isEnabled = false
+        claudeTest.text = "Claude wird getestet …"
         probeExecutor.submit {
-            val result = AiProviderManager.testConfigured(applicationContext)
+            val result = runCatching {
+                val config = CloudProviderRegistry(applicationContext).load(CloudProviderRegistry.Slot.CLAUDE)
+                    ?: throw DialogueRouter.ProviderException("PROVIDER_NOT_CONFIGURED")
+                if (config.apiKey.isBlank()) throw DialogueRouter.ProviderException("PROVIDER_KEY_MISSING")
+                ClaudeDialogueProvider(config).generate("Connectivity smoke test for Ariana X-88. Reply briefly with CLAUDE_OK.")
+            }
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
-                testButton.isEnabled = true; testButton.text = "Gespeicherte KI-Verbindung testen"
-                if (result.ok) toast("KI-Verbindung OK · ${result.model ?: "Modell"} · ${result.replyPreview?.takeIf { it.isNotBlank() } ?: "Antwort erhalten"}")
-                else toast("KI-Test fehlgeschlagen: ${result.error ?: "PROVIDER_PROBE_FAILED"}")
+                claudeTest.isEnabled = true
+                claudeTest.text = "Claude testen"
+                result.onSuccess { toast("Claude-Verbindung OK · ${it.take(80)}") }
+                    .onFailure { toast("Claude-Test fehlgeschlagen: ${providerError(it)}") }
                 refreshStatus()
             }
         }
     }
 
-    private fun restorePrevious() {
-        val restored = runCatching { AiProviderManager.restorePrevious(this) }.getOrDefault(false)
-        if (!restored) { toast("Kein nutzbarer Recovery-Snapshot vorhanden."); refreshStatus(); return }
-        loadCurrent(); toast("Letzten Provider-Stand wiederhergestellt.")
-    }
-
-    private fun refreshStatus() {
-        val status = AiProviderManager.status(this)
-        statusView.text = buildString {
-            append("Status: ").append(if (status.active) "aktiv" else if (status.configured) "konfiguriert" else "nicht konfiguriert")
-            status.endpointHost?.let { append(" · Host: $it") }
-            status.model?.let { append(" · Modell: $it") }
-            append(" · Schlüssel: ").append(if (status.apiKeyPresent) "gespeichert" else "nicht gesetzt")
-            append(" · Recovery: ").append(if (status.recoveryAvailable) "vorhanden" else "leer")
+    private fun testMeta() {
+        if (!metaTest.isEnabled) return
+        metaTest.isEnabled = false
+        metaTest.text = "Meta wird getestet …"
+        probeExecutor.submit {
+            val result = runCatching {
+                val config = CloudProviderRegistry(applicationContext).load(CloudProviderRegistry.Slot.META)
+                    ?: throw DialogueRouter.ProviderException("PROVIDER_NOT_CONFIGURED")
+                if (config.apiKey.isBlank()) throw DialogueRouter.ProviderException("PROVIDER_KEY_MISSING")
+                HttpsDialogueProvider(config).generate("Connectivity smoke test for Ariana X-88. Reply briefly with META_OK.")
+            }
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                metaTest.isEnabled = true
+                metaTest.text = "Meta testen"
+                result.onSuccess { toast("Meta-Verbindung OK · ${it.take(80)}") }
+                    .onFailure { toast("Meta-Test fehlgeschlagen: ${providerError(it)}") }
+                refreshStatus()
+            }
         }
     }
 
-    private fun label(value: String, size: Float, color: Int) = TextView(this).apply { text = value; textSize = size; setTextColor(color); setPadding(0, 8, 0, 8) }
-    private fun toast(message: String) { Toast.makeText(this, message, Toast.LENGTH_LONG).show() }
+    private fun providerError(error: Throwable): String =
+        (error as? DialogueRouter.ProviderException)?.code ?: error.message ?: "PROVIDER_PROBE_FAILED"
+
+    private fun refreshStatus() {
+        val registry = CloudProviderRegistry(this).also { it.migrateActiveIfNeeded() }
+        val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
+        val meta = registry.load(CloudProviderRegistry.Slot.META)
+        claudeStatus.text = providerStatus("Claude", claude)
+        metaStatus.text = providerStatus("Meta", meta)
+    }
+
+    private fun providerStatus(name: String, config: SecureAiProviderStore.Config?): String = buildString {
+        append(name).append(": ")
+        if (config == null) {
+            append("nicht konfiguriert")
+            return@buildString
+        }
+        append("bereit")
+        append(" · Modell: ").append(config.model)
+        append(" · Schlüssel: ").append(if (config.apiKey.isNotBlank()) "gespeichert" else "fehlt")
+    }
+
+    private fun sectionTitle(value: String) = label(value, 16f, Color.parseColor("#25D9FF"))
+
+    private fun label(value: String, size: Float, color: Int) = TextView(this).apply {
+        text = value
+        textSize = size
+        setTextColor(color)
+        setPadding(0, 8, 0, 8)
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
 
     private companion object {
         const val CLAUDE_MODEL = "claude-sonnet-5"
