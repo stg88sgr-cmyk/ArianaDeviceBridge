@@ -1,5 +1,6 @@
 package de.snowworks.ariana.bridge
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -35,5 +36,21 @@ class AiProviderRecoverySupervisorTest {
     @Test
     fun clockRollbackDoesNotPermanentlySuppressRecovery() {
         assertTrue(AiProviderRecoverySupervisor.isDue(10_000L, 9_000L))
+        assertEquals(9_000L, AiProviderRecoverySupervisor.nextEligibleWallMs(10_000L, 9_000L))
+    }
+
+    @Test
+    fun nextEligibleTimeMatchesRateLimitBoundary() {
+        val last = 2_000_000L
+        val now = last + 1_000L
+        assertEquals(
+            last + AiProviderRecoverySupervisor.MIN_AUTO_PROBE_INTERVAL_MS,
+            AiProviderRecoverySupervisor.nextEligibleWallMs(last, now),
+        )
+    }
+
+    @Test
+    fun neverProbedProviderIsImmediatelyEligible() {
+        assertEquals(5_000L, AiProviderRecoverySupervisor.nextEligibleWallMs(0L, 5_000L))
     }
 }
