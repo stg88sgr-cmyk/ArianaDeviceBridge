@@ -20,6 +20,7 @@ import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.AiRouteStateStore
 import de.snowworks.ariana.bridge.AiRouterMetricsStore
+import de.snowworks.ariana.bridge.AiRouterTrendAssessment
 import de.snowworks.ariana.bridge.AiRouterTrendStore
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.CloudProviderRegistry
@@ -177,6 +178,7 @@ class X88HealthActivity : AppCompatActivity() {
         val routeHistory = AiRouteStateStore.history(this).takeLast(6).asReversed()
         val metrics = AiRouterMetricsStore.snapshot(this)
         val trends = AiRouterTrendStore.snapshot(this)
+        val trendAssessment = AiRouterTrendAssessment.assess(trends)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -207,6 +209,13 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("ROUTER TRENDS")
             appendLine(trendLine("24h", trends.last24Hours))
             appendLine(trendLine("7d", trends.last7Days))
+            appendLine()
+            appendLine("ROUTER SELF-DIAGNOSIS")
+            appendLine("Status: ${trendAssessment.level}")
+            appendLine("Fehler-Delta 24h vs 7d: ${formatSignedPoints(trendAssessment.errorDeltaPoints)}")
+            appendLine("Fallback-Delta 24h vs 7d: ${formatSignedPoints(trendAssessment.fallbackDeltaPoints)}")
+            appendLine("Samples: 24h=${trendAssessment.recentSamples} · 7d=${trendAssessment.baselineSamples}")
+            if (trendAssessment.reasons.isNotEmpty()) appendLine("Signale: ${trendAssessment.reasons.joinToString(" > ")}")
             appendLine()
             appendLine("ROUTER HISTORY")
             if (routeHistory.isEmpty()) {
@@ -280,6 +289,8 @@ class X88HealthActivity : AppCompatActivity() {
     }
 
     private fun formatPercent(value: Double): String = String.format(Locale.US, "%.1f%%", value)
+
+    private fun formatSignedPoints(value: Double): String = String.format(Locale.US, "%+.1f pp", value)
 
     private fun formatTime(value: Long): String = if (value > 0L) DateFormat.getDateTimeInstance().format(Date(value)) else "noch keine"
 
