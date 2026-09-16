@@ -7,13 +7,21 @@ import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
+import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.session.SessionRegistry
 
 class SnowworksApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // No device/session restore after process death.
+
+        // Device capture sessions remain intentionally non-restorable after process death.
         SessionRegistry.clear()
+
+        // Durable Universal Bridge V2 configuration survives process/app restarts.
+        UniversalBridgeStateStore(this).ensureDefaults(
+            currentBuild = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        )
+
         DialogueRouter.initialize(this)
 
         // Restore only the local loopback core when the user-controlled master gate

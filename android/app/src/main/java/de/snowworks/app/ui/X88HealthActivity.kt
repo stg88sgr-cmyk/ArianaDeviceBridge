@@ -1,5 +1,6 @@
 package de.snowworks.app.ui
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
@@ -11,6 +12,9 @@ import androidx.core.view.setPadding
 import com.google.android.material.button.MaterialButton
 import de.snowworks.ariana.ArianaDeviceApi
 import de.snowworks.ariana.Feature
+import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
+import de.snowworks.ariana.apk.ApkHealthCheck
+import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
@@ -50,14 +54,22 @@ class X88HealthActivity : AppCompatActivity() {
 
         root.addView(text("ARIANA X-88", 12f, "#7E93A6"))
         root.addView(text("HEALTH · RELEASE GATE", 26f, "#EAF7FF"))
-        root.addView(text("Lokale Bridge, Gate, Session-Module und echte Android-Thermalwerte.", 12f, "#8398A8"))
+        root.addView(text("Lokale Bridge, Gate, Session-Module, APK-Pipeline und echte Android-Thermalwerte.", 12f, "#8398A8"))
 
         runButton = MaterialButton(this).apply {
-            text = "Bridge Self-Test starten"
+            text = "Bridge + APK Self-Test starten"
             isAllCaps = false
             setOnClickListener { runSelfTest() }
         }
         root.addView(runButton)
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "APK Manager öffnen"
+                isAllCaps = false
+                setOnClickListener { startActivity(Intent(this@X88HealthActivity, ApkStatusActivity::class.java)) }
+            },
+        )
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -78,10 +90,12 @@ class X88HealthActivity : AppCompatActivity() {
 
     private fun runSelfTest() {
         runButton.isEnabled = false
-        output.text = "Bridge Self-Test läuft …"
+        output.text = "Bridge + APK Self-Test läuft …"
 
         executor.execute {
             val result = BridgeSelfTest.run(applicationContext)
+            val apk = ApkHealthCheck.run(applicationContext)
+            val apkRoutes = ApkBridgeRouteSelfTest.run(applicationContext)
             val report = buildString {
                 appendLine(result.message)
                 appendLine()
@@ -92,6 +106,23 @@ class X88HealthActivity : AppCompatActivity() {
                         else -> "FAIL"
                     }
                     appendLine("${index + 1}. [$marker] ${check.name}")
+                    appendLine("   ${check.detail}")
+                }
+                appendLine()
+                appendLine(if (apk.ok) "APK HEALTH · PASS" else "APK HEALTH · ATTENTION")
+                apk.checks.forEachIndexed { index, check ->
+                    val marker = when {
+                        check.skipped -> "SKIP"
+                        check.ok -> "PASS"
+                        else -> "FAIL"
+                    }
+                    appendLine("A${index + 1}. [$marker] ${check.name}")
+                    appendLine("   ${check.detail}")
+                }
+                appendLine()
+                appendLine(if (apkRoutes.ok) "APK ROUTES · PASS" else "APK ROUTES · FAIL")
+                apkRoutes.checks.forEachIndexed { index, check ->
+                    appendLine("R${index + 1}. [${if (check.ok) "PASS" else "FAIL"}] ${check.name}")
                     appendLine("   ${check.detail}")
                 }
                 appendLine()
@@ -133,6 +164,7 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("Stop-All blockiert: ${if (api.isBlocked()) "JA" else "NEIN"}")
             appendLine("Bridge: ${connection.label}")
             appendLine("Bridge Detail: ${connection.detail}")
+            appendLine("APK-Installationsquelle: ${if (ApkInstallSourceController.isReady(this@X88HealthActivity)) "READY" else "FREIGABE NÖTIG"}")
             appendLine()
             appendLine("THERMAL SAFETY")
             appendLine("Android Thermal API: ${if (thermal.supported) "AKTIV" else "NICHT UNTERSTÜTZT"}")
