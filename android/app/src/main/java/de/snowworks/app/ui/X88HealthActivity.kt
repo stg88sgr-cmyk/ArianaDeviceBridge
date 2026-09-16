@@ -16,6 +16,7 @@ import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
+import de.snowworks.ariana.bridge.AiProviderQualityAssessment
 import de.snowworks.ariana.bridge.AiProviderQualityStore
 import de.snowworks.ariana.bridge.AiProviderQualityTrendStore
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
@@ -185,6 +186,8 @@ class X88HealthActivity : AppCompatActivity() {
         val metaQuality = AiProviderQualityStore.snapshot(this, AiProviderQualityStore.Engine.META)
         val claudeQualityTrends = AiProviderQualityTrendStore.snapshot(this, AiProviderQualityStore.Engine.CLAUDE)
         val metaQualityTrends = AiProviderQualityTrendStore.snapshot(this, AiProviderQualityStore.Engine.META)
+        val claudeAssessment = AiProviderQualityAssessment.assess(claudeQualityTrends)
+        val metaAssessment = AiProviderQualityAssessment.assess(metaQualityTrends)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -216,6 +219,10 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine(providerQualityTrendLine("CLAUDE 7d", claudeQualityTrends.last7Days))
             appendLine(providerQualityTrendLine("META 24h", metaQualityTrends.last24Hours))
             appendLine(providerQualityTrendLine("META 7d", metaQualityTrends.last7Days))
+            appendLine()
+            appendLine("PROVIDER QUALITY · SELF-DIAGNOSIS")
+            appendLine(providerAssessmentLine(claudeAssessment))
+            appendLine(providerAssessmentLine(metaAssessment))
             appendLine()
             appendLine("ROUTER METRICS · LIFETIME")
             appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
@@ -288,6 +295,16 @@ class X88HealthActivity : AppCompatActivity() {
         append(" · fallback-share=").append(formatPercent(window.fallbackSharePercent))
         append(" · circuit-rejected=").append(window.circuitRejected)
         append(" · execution=").append(formatPercent(window.executionRatePercent))
+    }
+
+    private fun providerAssessmentLine(assessment: AiProviderQualityAssessment.Assessment): String = buildString {
+        append(assessment.engine.name).append(": ").append(assessment.level)
+        append(" · errorΔ=").append(formatSignedPoints(assessment.errorDeltaPoints))
+        append(" · circuitΔ=").append(formatSignedPoints(assessment.circuitRejectDeltaPoints))
+        append(" · executionΔ=").append(formatSignedPoints(assessment.executionDeltaPoints))
+        append(" · fallbackΔ=").append(formatSignedPoints(assessment.fallbackDeltaPoints))
+        append(" · samples=").append(assessment.recentExecuted).append('/').append(assessment.baselineExecuted)
+        if (assessment.reasons.isNotEmpty()) append(" · signals=").append(assessment.reasons.joinToString(">"))
     }
 
     private fun trendLine(label: String, window: AiRouterTrendStore.Window): String = buildString {
