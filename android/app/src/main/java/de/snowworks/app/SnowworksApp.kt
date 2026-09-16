@@ -14,6 +14,7 @@ import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
+import de.snowworks.ariana.generator.GeneratorLoopbackServer
 import de.snowworks.ariana.session.SessionRegistry
 
 class SnowworksApp : Application() {
@@ -35,11 +36,12 @@ class SnowworksApp : Application() {
         DialogueRouter.initialize(this)
         registerHomeAiIndicator()
 
-        // Restore only the local loopback core when the user-controlled master gate
+        // Restore only local loopback surfaces when the user-controlled master gate
         // was already enabled and Stop-All has not blocked new actions.
         val gate = ArianaGate(this)
         if (gate.isMasterEnabled && !gate.isBlocked) {
             LocalBridgeServer.start(this)
+            GeneratorLoopbackServer.start(this)
         }
 
         // Prefer Ariana's local providers. A configured HTTPS provider remains
