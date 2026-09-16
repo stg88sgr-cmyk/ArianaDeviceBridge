@@ -3,6 +3,8 @@ package de.snowworks.ariana.bridge
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
+import de.snowworks.ariana.apk.ApkInstaller
+import de.snowworks.ariana.apk.ApkManager
 
 /**
  * Executes the small, explicit set of local device actions that have already
@@ -30,6 +32,7 @@ object LocalDeviceActionExecutor {
 
         return when (grant.action) {
             ACTION_OPEN_SETTINGS -> openSettings(context.applicationContext)
+            ACTION_APK_INSTALL_LATEST -> installLatestTrustedApk(context.applicationContext)
             else -> Result(false, "ACTION_NOT_IMPLEMENTED")
         }
     }
@@ -43,6 +46,25 @@ object LocalDeviceActionExecutor {
         Result(false, error.javaClass.simpleName)
     }
 
+    private fun installLatestTrustedApk(context: Context): Result = runCatching {
+        val manager = ApkManager(context)
+        val staged = manager.stageLatest() ?: return Result(false, "NO_APK_DOWNLOAD_FOUND")
+        val install = ApkInstaller(context).startTrustedInstall(staged)
+        if (install.ok) {
+            manager.clearStaging(keepFileName = staged.name)
+            Result(true)
+        } else {
+            Result(false, install.reason ?: "APK_INSTALL_REJECTED")
+        }
+    }.getOrElse { error ->
+        Result(false, error.javaClass.simpleName)
+    }
+
     const val ACTION_OPEN_SETTINGS = "open_settings"
-    private val SUPPORTED_ACTIONS = setOf(ACTION_OPEN_SETTINGS)
+    const val ACTION_APK_INSTALL_LATEST = "apk_install_latest"
+
+    private val SUPPORTED_ACTIONS = setOf(
+        ACTION_OPEN_SETTINGS,
+        ACTION_APK_INSTALL_LATEST,
+    )
 }
