@@ -98,9 +98,9 @@ jobs:
           grep -F 'resolveFinalReply' "$judge"
           grep -F 'JUDGE_MERGE_NEEDS_FINAL' "$judge"
           grep -F 'rejectsCopiedVerdictTemplate' "$judge_test"
-          grep -F 'resolvesEmptyPrimaryFinalToPrimaryCandidate' "$judge_test"
-          grep -F 'resolvesEmptyMetaFinalToMetaCandidate' "$judge_test"
-          grep -F 'rejectsEmptyMergeFinal' "$judge_test"
+          grep -F 'primaryVerdictMayReusePrimaryWhenFinalIsEmpty' "$judge_test"
+          grep -F 'metaVerdictMayReuseMetaWhenFinalIsEmpty' "$judge_test"
+          grep -F 'mergeVerdictRequiresRealFinalAnswer' "$judge_test"
 
       - name: Compile Kotlin and run unit tests
         working-directory: android
