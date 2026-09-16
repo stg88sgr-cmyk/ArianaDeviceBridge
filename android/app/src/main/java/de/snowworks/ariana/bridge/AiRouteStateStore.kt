@@ -11,6 +11,7 @@ object AiRouteStateStore {
         val taskClass: String,
         val fallbackUsed: Boolean,
         val updatedAtMs: Long,
+        val fallbackReason: String? = null,
     )
 
     data class HistoryEntry(
@@ -18,6 +19,7 @@ object AiRouteStateStore {
         val taskClass: String,
         val fallbackUsed: Boolean,
         val updatedAtMs: Long,
+        val fallbackReason: String? = null,
     )
 
     private const val PREFS = "x88_ai_route_state"
@@ -25,6 +27,7 @@ object AiRouteStateStore {
     private const val KEY_TASK = "task"
     private const val KEY_FALLBACK = "fallback"
     private const val KEY_UPDATED = "updated"
+    private const val KEY_REASON = "fallback_reason"
     private const val KEY_HISTORY = "history_v1"
     internal const val MAX_HISTORY = 12
 
@@ -41,17 +44,19 @@ object AiRouteStateStore {
         val previous = read(app)
         val now = System.currentTimeMillis()
         val task = result.taskClass.name
-        val next = State(engine, task, result.fallbackUsed, now)
+        val reason = result.fallbackReason?.take(160)
+        val next = State(engine, task, result.fallbackUsed, now, reason)
 
-        prefs.edit()
-            .putString(KEY_ENGINE, engine)
-            .putString(KEY_TASK, task)
-            .putBoolean(KEY_FALLBACK, result.fallbackUsed)
-            .putLong(KEY_UPDATED, now)
-            .apply()
+        prefs.edit().apply {
+            putString(KEY_ENGINE, engine)
+            putString(KEY_TASK, task)
+            putBoolean(KEY_FALLBACK, result.fallbackUsed)
+            putLong(KEY_UPDATED, now)
+            if (reason.isNullOrBlank()) remove(KEY_REASON) else putString(KEY_REASON, reason)
+        }.apply()
 
         if (shouldRecordTransition(previous, next)) {
-            appendHistory(prefs, HistoryEntry(engine, task, result.fallbackUsed, now))
+            appendHistory(prefs, HistoryEntry(engine, task, result.fallbackUsed, now, reason))
         }
     }
 
@@ -63,6 +68,7 @@ object AiRouteStateStore {
                 ?: SmartAiRouter.TaskClass.GENERAL.name,
             fallbackUsed = prefs.getBoolean(KEY_FALLBACK, false),
             updatedAtMs = prefs.getLong(KEY_UPDATED, 0L),
+            fallbackReason = prefs.getString(KEY_REASON, null),
         )
     }
 
@@ -80,6 +86,7 @@ object AiRouteStateStore {
                             taskClass = item.optString("task", SmartAiRouter.TaskClass.GENERAL.name),
                             fallbackUsed = item.optBoolean("fallback", false),
                             updatedAtMs = item.optLong("updated", 0L),
+                            fallbackReason = item.optString("reason", "").ifBlank { null },
                         ),
                     )
                 }
@@ -99,7 +106,8 @@ object AiRouteStateStore {
         previous.updatedAtMs == 0L ||
             previous.engine != next.engine ||
             previous.taskClass != next.taskClass ||
-            previous.fallbackUsed != next.fallbackUsed
+            previous.fallbackUsed != next.fallbackUsed ||
+            previous.fallbackReason != next.fallbackReason
 
     internal fun historyStartIndex(existingCount: Int): Int =
         maxOf(0, existingCount - (MAX_HISTORY - 1))
@@ -119,7 +127,8 @@ object AiRouteStateStore {
                 .put("engine", entry.engine)
                 .put("task", entry.taskClass)
                 .put("fallback", entry.fallbackUsed)
-                .put("updated", entry.updatedAtMs),
+                .put("updated", entry.updatedAtMs)
+                .put("reason", entry.fallbackReason ?: ""),
         )
         prefs.edit().putString(KEY_HISTORY, compact.toString()).apply()
     }
