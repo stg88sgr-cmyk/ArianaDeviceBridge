@@ -147,11 +147,15 @@ class ArianaVoiceController(
         retryPending = false
         recognitionReady = false
         recognitionAttempt++
-        if (!listeningActive) return false
+        val wasListening = listeningActive
         listeningActive = false
         suppressCancelError = true
-        recognizer?.cancel()
-        return true
+
+        val oldRecognizer = recognizer
+        recognizer = null
+        runCatching { oldRecognizer?.cancel() }
+        runCatching { oldRecognizer?.destroy() }
+        return wasListening || oldRecognizer != null
     }
 
     fun speak(text: String) {
