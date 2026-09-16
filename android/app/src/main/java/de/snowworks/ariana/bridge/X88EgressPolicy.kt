@@ -33,7 +33,7 @@ object X88EgressPolicy {
             actor = Actor.LUNA_XXY,
             purpose = Purpose.LOCAL_BRIDGE,
             hostMatcher = { it == "127.0.0.1" || it == "localhost" },
-            ports = setOf(8765, 44417),
+            ports = setOf(8765, 8766, 44417),
             requireHttps = false,
         ),
         Rule(
