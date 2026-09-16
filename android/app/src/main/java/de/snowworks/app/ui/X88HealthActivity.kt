@@ -17,6 +17,7 @@ import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
+import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.CloudProviderRegistry
 import de.snowworks.ariana.files.TreePermissionStore
@@ -59,7 +60,7 @@ class X88HealthActivity : AppCompatActivity() {
 
         root.addView(text("ARIANA X-88", 12f, "#7E93A6"))
         root.addView(text("HEALTH · RELEASE GATE", 26f, "#EAF7FF"))
-        root.addView(text("Lokale Bridge, Multi-KI-Routing, Gate, Session-Module, APK-Pipeline und echte Android-Thermalwerte.", 12f, "#8398A8"))
+        root.addView(text("Lokale Bridge, Multi-KI-Routing, Recovery-Supervisor, Gate, Session-Module, APK-Pipeline und echte Android-Thermalwerte.", 12f, "#8398A8"))
 
         runButton = MaterialButton(this).apply {
             text = "Bridge + APK Self-Test starten"
@@ -81,29 +82,21 @@ class X88HealthActivity : AppCompatActivity() {
         root.addView(claudeProbeButton)
         root.addView(metaProbeButton)
 
-        root.addView(
-            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "KI-Provider öffnen"
-                isAllCaps = false
-                setOnClickListener { startActivity(Intent(this@X88HealthActivity, AiProviderSettingsActivity::class.java)) }
-            },
-        )
-
-        root.addView(
-            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "APK Manager öffnen"
-                isAllCaps = false
-                setOnClickListener { startActivity(Intent(this@X88HealthActivity, ApkStatusActivity::class.java)) }
-            },
-        )
-
-        root.addView(
-            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
-                text = "Status aktualisieren"
-                isAllCaps = false
-                setOnClickListener { refreshSummary() }
-            },
-        )
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "KI-Provider öffnen"
+            isAllCaps = false
+            setOnClickListener { startActivity(Intent(this@X88HealthActivity, AiProviderSettingsActivity::class.java)) }
+        })
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "APK Manager öffnen"
+            isAllCaps = false
+            setOnClickListener { startActivity(Intent(this@X88HealthActivity, ApkStatusActivity::class.java)) }
+        })
+        root.addView(MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Status aktualisieren"
+            isAllCaps = false
+            setOnClickListener { refreshSummary() }
+        })
 
         output = text("Noch kein Test.", 13f, "#DCEAF2").apply { setTextIsSelectable(true) }
         root.addView(output)
@@ -117,7 +110,6 @@ class X88HealthActivity : AppCompatActivity() {
     private fun runSelfTest() {
         runButton.isEnabled = false
         output.text = "Bridge + APK Self-Test läuft …"
-
         executor.execute {
             val result = BridgeSelfTest.run(applicationContext)
             val apk = ApkHealthCheck.run(applicationContext)
@@ -126,22 +118,14 @@ class X88HealthActivity : AppCompatActivity() {
                 appendLine(result.message)
                 appendLine()
                 result.checks.forEachIndexed { index, check ->
-                    val marker = when {
-                        check.skipped -> "SKIP"
-                        check.ok -> "PASS"
-                        else -> "FAIL"
-                    }
+                    val marker = when { check.skipped -> "SKIP"; check.ok -> "PASS"; else -> "FAIL" }
                     appendLine("${index + 1}. [$marker] ${check.name}")
                     appendLine("   ${check.detail}")
                 }
                 appendLine()
                 appendLine(if (apk.ok) "APK HEALTH · PASS" else "APK HEALTH · ATTENTION")
                 apk.checks.forEachIndexed { index, check ->
-                    val marker = when {
-                        check.skipped -> "SKIP"
-                        check.ok -> "PASS"
-                        else -> "FAIL"
-                    }
+                    val marker = when { check.skipped -> "SKIP"; check.ok -> "PASS"; else -> "FAIL" }
                     appendLine("A${index + 1}. [$marker] ${check.name}")
                     appendLine("   ${check.detail}")
                 }
@@ -154,7 +138,6 @@ class X88HealthActivity : AppCompatActivity() {
                 appendLine()
                 append(runtimeSummary())
             }
-
             runOnUiThread {
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 output.text = report
@@ -168,7 +151,6 @@ class X88HealthActivity : AppCompatActivity() {
         if (!button.isEnabled) return
         button.isEnabled = false
         button.text = "${slot.name} wird getestet …"
-
         executor.execute {
             val result = AiProviderRecoveryProbe.run(applicationContext, slot)
             runOnUiThread {
@@ -181,26 +163,17 @@ class X88HealthActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshSummary() {
-        output.text = runtimeSummary()
-    }
+    private fun refreshSummary() { output.text = runtimeSummary() }
 
     private fun runtimeSummary(): String {
         val api = ArianaDeviceApi(this)
         val connection = api.getConnection()
         val thermal = ThermalSafetyController.currentSnapshot()
         val ai = AiHealthReporter.snapshot(this)
+        val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
-        val tracked = listOf(
-            Feature.CAMERA,
-            Feature.MICROPHONE,
-            Feature.SCREEN,
-            Feature.NOTIFY_READ,
-            Feature.FILES,
-            Feature.LOCATION,
-            Feature.BLUETOOTH,
-        )
+        val tracked = listOf(Feature.CAMERA, Feature.MICROPHONE, Feature.SCREEN, Feature.NOTIFY_READ, Feature.FILES, Feature.LOCATION, Feature.BLUETOOTH)
 
         return buildString {
             appendLine("RUNTIME SNAPSHOT")
@@ -216,7 +189,12 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine(providerLine(ai.claude))
             appendLine(providerLine(ai.meta))
             appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
-            appendLine("Route-Zeit: ${if (ai.route.updatedAtMs > 0L) DateFormat.getDateTimeInstance().format(Date(ai.route.updatedAtMs)) else "noch keine"}")
+            appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
+            appendLine()
+            appendLine("AI RECOVERY SUPERVISOR")
+            appendLine("Status: ${if (supervisor.running) "RUNNING" else "STOPPED"} · tick=${supervisor.tickSeconds}s · min-gap=${supervisor.minProbeIntervalMs / 1000L}s")
+            appendLine(supervisorLine(supervisor.claude))
+            appendLine(supervisorLine(supervisor.meta))
             appendLine()
             appendLine("THERMAL SAFETY")
             appendLine("Android Thermal API: ${if (thermal.supported) "AKTIV" else "NICHT UNTERSTÜTZT"}")
@@ -253,13 +231,21 @@ class X88HealthActivity : AppCompatActivity() {
         }
     }
 
-    private fun text(value: String, sizeSp: Float, colorHex: String): TextView =
-        TextView(this).apply {
-            text = value
-            textSize = sizeSp
-            setTextColor(Color.parseColor(colorHex))
-            setPadding(0, dp(5), 0, dp(5))
-        }
+    private fun supervisorLine(status: AiProviderRecoverySupervisor.SlotTelemetry): String = buildString {
+        append(status.engine).append(": last=").append(formatTime(status.lastAttemptWallMs))
+        append(" · success=").append(formatTime(status.lastSuccessWallMs))
+        status.lastError?.let { append(" · error=").append(it) }
+        append(" · next=").append(formatTime(status.nextEligibleWallMs))
+    }
+
+    private fun formatTime(value: Long): String = if (value > 0L) DateFormat.getDateTimeInstance().format(Date(value)) else "noch keine"
+
+    private fun text(value: String, sizeSp: Float, colorHex: String): TextView = TextView(this).apply {
+        text = value
+        textSize = sizeSp
+        setTextColor(Color.parseColor(colorHex))
+        setPadding(0, dp(5), 0, dp(5))
+    }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
