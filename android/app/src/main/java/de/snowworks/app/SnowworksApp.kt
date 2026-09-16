@@ -8,6 +8,7 @@ import de.snowworks.app.ui.X88HomeActivity
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderHealth
 import de.snowworks.ariana.bridge.AiProviderManager
+import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
@@ -48,6 +49,11 @@ class SnowworksApp : Application() {
         ) {
             AiProviderManager.activateConfigured(this)
         }
+
+        // Process-local background recovery: probes only configured providers that
+        // have completed their cooldown and are RECOVERY READY. It never changes
+        // DialogueRouter's active provider and creates no new Android permission need.
+        AiProviderRecoverySupervisor.start(this)
     }
 
     private fun registerHomeAiIndicator() {
