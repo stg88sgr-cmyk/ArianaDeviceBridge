@@ -34,6 +34,10 @@ object MultiAiRouter {
         val metaReply: String? = null,
         val review: String? = null,
         val consensus: String? = null,
+        val judgeProviderId: String? = null,
+        val judgeVerdict: MultiAiJudge.Verdict? = null,
+        val judgeRationale: String? = null,
+        val judgeError: String? = null,
         val error: String? = null,
     )
 
@@ -166,26 +170,25 @@ object MultiAiRouter {
             )
         }
 
-        val synthesisPrompt = buildString {
-            append("Ariana, du bist die entscheidende Instanz. Führe zwei technische Analysen zu einer ")
-            append("knappen, belastbaren Endlösung zusammen. Übernimm keinen Vorschlag ungeprüft. Aufgabe: ")
-            append(text.take(300))
-            append("\nDeine erste Analyse: ")
-            append(parallel.primaryReply.take(360))
-            append("\nMeta-Analyse: ")
-            append(parallel.metaReply.take(360))
-        }
-        val synthesis = DialogueRouter.generate(synthesisPrompt)
-        val consensus = synthesis.reply ?: parallel.primaryReply
+        val judge = MultiAiJudge.decide(
+            task = text,
+            primaryReply = parallel.primaryReply,
+            metaReply = parallel.metaReply,
+        )
+        val consensus = judge.finalReply ?: parallel.primaryReply
         return Result(
-            ok = !consensus.isNullOrBlank(),
+            ok = consensus.isNotBlank(),
             mode = Mode.CONSENSUS,
             primaryProviderId = parallel.primaryProviderId,
             metaProviderId = parallel.metaProviderId,
             primaryReply = parallel.primaryReply,
             metaReply = parallel.metaReply,
             consensus = consensus,
-            error = if (consensus.isNullOrBlank()) synthesis.error ?: "CONSENSUS_FAILED" else null,
+            judgeProviderId = judge.judgeProviderId,
+            judgeVerdict = judge.verdict,
+            judgeRationale = judge.rationale,
+            judgeError = if (judge.ok) null else judge.error,
+            error = if (consensus.isBlank()) judge.error ?: "CONSENSUS_FAILED" else null,
         )
     }
 
