@@ -16,7 +16,9 @@ import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
+import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.BridgeSelfTest
+import de.snowworks.ariana.bridge.CloudProviderRegistry
 import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
@@ -30,6 +32,8 @@ class X88HealthActivity : AppCompatActivity() {
 
     private lateinit var output: TextView
     private lateinit var runButton: MaterialButton
+    private lateinit var claudeProbeButton: MaterialButton
+    private lateinit var metaProbeButton: MaterialButton
     private val executor = Executors.newSingleThreadExecutor { runnable ->
         Thread(runnable, "ArianaX88Health").apply { isDaemon = true }
     }
@@ -63,6 +67,19 @@ class X88HealthActivity : AppCompatActivity() {
             setOnClickListener { runSelfTest() }
         }
         root.addView(runButton)
+
+        claudeProbeButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Claude jetzt testen"
+            isAllCaps = false
+            setOnClickListener { runProviderProbe(CloudProviderRegistry.Slot.CLAUDE) }
+        }
+        metaProbeButton = MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+            text = "Meta jetzt testen"
+            isAllCaps = false
+            setOnClickListener { runProviderProbe(CloudProviderRegistry.Slot.META) }
+        }
+        root.addView(claudeProbeButton)
+        root.addView(metaProbeButton)
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -146,6 +163,24 @@ class X88HealthActivity : AppCompatActivity() {
         }
     }
 
+    private fun runProviderProbe(slot: CloudProviderRegistry.Slot) {
+        val button = if (slot == CloudProviderRegistry.Slot.CLAUDE) claudeProbeButton else metaProbeButton
+        if (!button.isEnabled) return
+        button.isEnabled = false
+        button.text = "${slot.name} wird getestet …"
+
+        executor.execute {
+            val result = AiProviderRecoveryProbe.run(applicationContext, slot)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                button.isEnabled = true
+                button.text = if (slot == CloudProviderRegistry.Slot.CLAUDE) "Claude jetzt testen" else "Meta jetzt testen"
+                val prefix = if (result.ok) "${result.engine} · TEST OK" else "${result.engine} · TEST FEHLER · ${result.error ?: "UNKNOWN"}"
+                output.text = "$prefix\n\n${runtimeSummary()}"
+            }
+        }
+    }
+
     private fun refreshSummary() {
         output.text = runtimeSummary()
     }
@@ -204,10 +239,11 @@ class X88HealthActivity : AppCompatActivity() {
     private fun providerLine(status: AiHealthReporter.ProviderStatus): String {
         if (!status.configured) return "${status.engine}: NICHT KONFIGURIERT"
         val state = when {
-            status.circuitOpen -> "CIRCUIT OPEN"
-            status.halfOpenProbeInFlight -> "HALF-OPEN PROBE"
+            status.circuitOpen -> "COOLDOWN ${maxOf(1L, status.cooldownRemainingMs / 1000L)}s"
+            status.halfOpenProbeInFlight -> "RECOVERY PROBE"
+            status.recoveryProbeReady -> "RECOVERY READY"
             status.consecutiveFailures > 0 -> "ATTENTION"
-            else -> "READY"
+            else -> "HEALTHY"
         }
         return buildString {
             append(status.engine).append(": ").append(state)
