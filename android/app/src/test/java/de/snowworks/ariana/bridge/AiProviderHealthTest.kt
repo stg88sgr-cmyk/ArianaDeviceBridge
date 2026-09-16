@@ -71,4 +71,16 @@ class AiProviderHealthTest {
         assertTrue(AiProviderHealth.acquireAttempt(providerId, nowMs = 22_000L))
         assertFalse(AiProviderHealth.snapshot(providerId, nowMs = 22_000L).circuitOpen)
     }
+
+    @Test
+    fun nonTransientErrorBreaksTransientFailureStreak() {
+        AiProviderHealth.recordFailure(providerId, "PROVIDER_NETWORK_FAILED", nowMs = 30_000L)
+        AiProviderHealth.recordFailure(providerId, "PROVIDER_NETWORK_FAILED", nowMs = 30_001L)
+        AiProviderHealth.recordFailure(providerId, "PROVIDER_AUTH_FAILED", nowMs = 30_002L)
+        AiProviderHealth.recordFailure(providerId, "PROVIDER_NETWORK_FAILED", nowMs = 30_003L)
+        AiProviderHealth.recordFailure(providerId, "PROVIDER_NETWORK_FAILED", nowMs = 30_004L)
+
+        assertTrue(AiProviderHealth.acquireAttempt(providerId, nowMs = 30_005L))
+        assertFalse(AiProviderHealth.snapshot(providerId, nowMs = 30_005L).circuitOpen)
+    }
 }
