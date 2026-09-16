@@ -6,6 +6,7 @@ import android.os.Bundle
 import de.snowworks.app.ui.HomeAiEngineIndicator
 import de.snowworks.app.ui.X88HomeActivity
 import de.snowworks.ariana.ArianaGate
+import de.snowworks.ariana.bridge.AiProviderHealth
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
@@ -26,6 +27,10 @@ class SnowworksApp : Application() {
             currentBuild = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
         )
 
+        // Restore cloud provider circuit-breaker/recovery metadata before any AI
+        // provider can be selected or called. No prompts, replies or credentials
+        // are persisted by this health layer.
+        AiProviderHealth.initialize(this)
         DialogueRouter.initialize(this)
         registerHomeAiIndicator()
 
