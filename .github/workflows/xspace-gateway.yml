@@ -1,0 +1,31 @@
+name: X88 XSpace Gateway
+
+on:
+  push:
+    branches:
+      - main
+      - 'x88/xspace-*'
+    paths:
+      - 'integrations/xspace-gateway/**'
+      - '.github/workflows/xspace-gateway.yml'
+  pull_request:
+    paths:
+      - 'integrations/xspace-gateway/**'
+      - '.github/workflows/xspace-gateway.yml'
+
+jobs:
+  build-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/xspace-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: integrations/xspace-gateway/package-lock.json
+      - run: npm install
+      - run: npm run build
+      - run: npm run smoke
