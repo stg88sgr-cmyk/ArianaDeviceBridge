@@ -45,10 +45,27 @@ object DialogueRouter {
             val context = appContext ?: return Outcome(false, error = "MULTI_AI_NOT_INITIALIZED")
             return multiAiOutcome(MultiAiRouter.run(context, command.mode, command.text))
         }
-        return generateSingle(rawText)
+
+        val context = appContext
+        if (context != null) {
+            val smart = SmartAiRouter.route(context, rawText)
+            return Outcome(
+                ok = smart.ok,
+                providerId = smart.providerId,
+                reply = smart.reply?.let(::sanitizeReply),
+                error = smart.error,
+            )
+        }
+
+        // JVM/unit-test and pre-initialization compatibility: stay on the active provider.
+        return generateActiveProvider(rawText)
     }
 
-    private fun generateSingle(rawText: String): Outcome {
+    /**
+     * Calls only the currently active Ariana provider. SmartAiRouter uses this as
+     * its local/private path to avoid re-entering automatic cloud routing.
+     */
+    internal fun generateActiveProvider(rawText: String): Outcome {
         val text = sanitize(rawText)
         if (text.isEmpty()) return Outcome(false, error = "INVALID_INPUT")
         val current = provider ?: return Outcome(false, error = "PROVIDER_UNAVAILABLE")
