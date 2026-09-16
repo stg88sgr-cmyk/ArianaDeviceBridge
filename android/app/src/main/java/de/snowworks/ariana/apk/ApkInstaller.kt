@@ -10,6 +10,7 @@ class ApkInstaller(
     context: Context,
     private val inspector: ApkInspector = ApkInspector(context),
     private val trustPolicy: ApkTrustPolicy = ApkTrustPolicy(context),
+    private val statusStore: ApkInstallStatusStore = ApkInstallStatusStore(context),
 ) {
     private val appContext = context.applicationContext
     private val packageInstaller = appContext.packageManager.packageInstaller
@@ -47,9 +48,12 @@ class ApkInstaller(
                 }
             }
 
+            statusStore.markStarted(packageName, sessionId)
+
             val callbackIntent = Intent(appContext, ApkInstallReceiver::class.java).apply {
                 action = ApkInstallReceiver.ACTION_INSTALL_STATUS
                 putExtra(ApkInstallReceiver.EXTRA_PACKAGE_NAME, packageName)
+                putExtra(ApkInstallReceiver.EXTRA_SESSION_ID, sessionId)
             }
             val pendingIntent = PendingIntent.getBroadcast(
                 appContext,
@@ -61,6 +65,7 @@ class ApkInstaller(
             return StartResult(true, sessionId, packageName, trust.reason)
         } catch (error: Throwable) {
             runCatching { session.abandon() }
+            statusStore.markFailure(packageName, sessionId, PackageInstaller.STATUS_FAILURE, error.javaClass.simpleName)
             return StartResult(false, sessionId, packageName, error.javaClass.simpleName)
         } finally {
             session.close()
