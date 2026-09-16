@@ -5,9 +5,17 @@ import path from "node:path";
 const moduleSpec = process.env.XSPACE_AGENT_MODULE?.trim() || "xspace-agent";
 const authToken = process.env.X_AUTH_TOKEN?.trim();
 const ct0 = process.env.X_CT0?.trim();
+const sttProvider = process.env.XSPACE_STT_PROVIDER?.trim() || "groq";
+const sttApiKey = process.env.XSPACE_STT_API_KEY?.trim()
+  || (sttProvider === "openai" ? process.env.OPENAI_API_KEY?.trim() : process.env.GROQ_API_KEY?.trim());
 
 if (!authToken || !ct0) {
   console.error("X_AUTH_TOKEN and X_CT0 are required");
+  process.exit(2);
+}
+
+if (!sttApiKey) {
+  console.error("XSPACE_STT_API_KEY (or the matching provider key) is required for transcription");
   process.exit(2);
 }
 
@@ -35,14 +43,23 @@ const agent = new XSpaceAgent({
     systemPrompt: "Ariana X-88 transport adapter. Reasoning is handled externally.",
     custom: passiveProvider
   },
+  transcription: {
+    provider: sttProvider,
+    apiKey: sttApiKey,
+    languageCode: process.env.XSPACE_STT_LANGUAGE || undefined
+  },
   voice: {
     provider: process.env.XSPACE_TTS_PROVIDER || "browser",
     apiKey: process.env.XSPACE_TTS_API_KEY || undefined,
     voiceId: process.env.XSPACE_VOICE_ID || undefined
   },
   browser: {
+    mode: process.env.XSPACE_BROWSER_MODE || "managed",
     headless: process.env.XSPACE_HEADLESS !== "false",
-    executablePath: process.env.XSPACE_CHROME_PATH || undefined
+    executablePath: process.env.XSPACE_CHROME_PATH || undefined,
+    cdpEndpoint: process.env.XSPACE_CDP_ENDPOINT || undefined,
+    cdpHost: process.env.XSPACE_CDP_HOST || undefined,
+    cdpPort: process.env.XSPACE_CDP_PORT ? Number(process.env.XSPACE_CDP_PORT) : undefined
   },
   behavior: {
     autoRespond: false,
