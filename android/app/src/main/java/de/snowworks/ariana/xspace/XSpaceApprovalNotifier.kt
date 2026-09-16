@@ -51,12 +51,11 @@ object XSpaceApprovalNotifier {
     }
 
     fun cancelAll(context: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            manager.activeNotifications
-                .filter { it.notification.channelId == CHANNEL_ID }
-                .forEach { manager.cancel(it.id) }
-        }
+        manager.activeNotifications
+            .filter { it.notification.channelId == CHANNEL_ID }
+            .forEach { manager.cancel(it.id) }
     }
 
     private fun ensureChannel(context: Context) {
