@@ -34,8 +34,8 @@ object AiProviderManager {
             return false
         }
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
-        val generator = HttpsDialogueProvider(config)
-        return DialogueRouter.register(providerId(host, config.model)) { text -> generator.generate(text) }
+        val generate = generatorFor(config)
+        return DialogueRouter.register(providerId(host, config.model)) { text -> generate(text) }
     }
 
     @Synchronized
@@ -66,7 +66,7 @@ object AiProviderManager {
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
         if (host.isNullOrBlank()) return ProbeResult(false, model = config.model, error = "PROVIDER_CONFIG_INVALID")
         return try {
-            val reply = HttpsDialogueProvider(config).generate("Connectivity smoke test for Ariana X-88. Reply briefly with META_SMOKE_OK.")
+            val reply = generatorFor(config)("Connectivity smoke test for Ariana X-88. Reply briefly with X88_PROVIDER_OK.")
             ProbeResult(
                 ok = reply.isNotBlank(),
                 providerHost = host,
@@ -89,6 +89,21 @@ object AiProviderManager {
         val host = runCatching { URI(config.endpoint).host }.getOrNull()
         val configuredId = host?.takeIf { it.isNotBlank() }?.let { providerId(it, config.model) }
         return Status(true, activeId != null && activeId == configuredId, activeId, host, config.model, config.apiKey.isNotBlank(), store.hasRecoverySnapshot())
+    }
+
+    internal fun isClaudeConfig(config: SecureAiProviderStore.Config): Boolean {
+        val uri = runCatching { URI(config.endpoint.trim()) }.getOrNull() ?: return false
+        return uri.host.equals(ClaudeDialogueProvider.ANTHROPIC_HOST, ignoreCase = true)
+    }
+
+    private fun generatorFor(config: SecureAiProviderStore.Config): (String) -> String {
+        return if (isClaudeConfig(config)) {
+            val provider = ClaudeDialogueProvider(config)
+            provider::generate
+        } else {
+            val provider = HttpsDialogueProvider(config)
+            provider::generate
+        }
     }
 
     private fun providerId(host: String, model: String): String {
