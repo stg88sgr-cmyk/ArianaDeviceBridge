@@ -28,6 +28,42 @@ class HttpsDialogueProvider(
         val uri = runCatching { URI(config.endpoint.trim()) }.getOrElse {
             throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID", it)
         }
+
+        val payload = JSONObject()
+            .put("model", config.model.trim())
+            .put("stream", false)
+            .put("temperature", 0.6)
+            .put("max_tokens", 640)
+            .put(
+                "messages",
+                JSONArray()
+                    .put(JSONObject().put("role", "system").put("content", "You are the dialogue provider for Ariana X-88. Reply naturally and concisely. Use German unless the user clearly requests another language. Do not claim device actions happened unless the bridge explicitly reports them."))
+                    .put(JSONObject().put("role", "user").put("content", cloudText)),
+            )
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+
+        if (payload.size > MAX_REQUEST_BYTES) throw DialogueRouter.ProviderException("PROVIDER_REQUEST_TOO_LARGE")
+
+        var lastError: DialogueRouter.ProviderException? = null
+        repeat(MAX_ATTEMPTS) { attempt ->
+            try {
+                return executeOnce(uri, payload)
+            } catch (error: DialogueRouter.ProviderException) {
+                lastError = error
+                if (attempt + 1 >= MAX_ATTEMPTS || !isRetryable(error.code)) throw error
+                try {
+                    Thread.sleep(RETRY_DELAY_MS)
+                } catch (interrupted: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    throw DialogueRouter.ProviderException("PROVIDER_NETWORK_FAILED", interrupted)
+                }
+            }
+        }
+        throw lastError ?: DialogueRouter.ProviderException("PROVIDER_FAILED")
+    }
+
+    private fun executeOnce(uri: URI, payload: ByteArray): String {
         try {
             validateDestination(uri)
         } catch (error: DialogueRouter.ProviderException) {
@@ -54,22 +90,6 @@ class HttpsDialogueProvider(
             throw DialogueRouter.ProviderException("PROVIDER_CONFIG_INVALID", error)
         }
 
-        val payload = JSONObject()
-            .put("model", config.model.trim())
-            .put("stream", false)
-            .put("temperature", 0.6)
-            .put("max_tokens", 640)
-            .put(
-                "messages",
-                JSONArray()
-                    .put(JSONObject().put("role", "system").put("content", "You are the dialogue provider for Ariana X-88. Reply naturally and concisely. Use German unless the user clearly requests another language. Do not claim device actions happened unless the bridge explicitly reports them."))
-                    .put(JSONObject().put("role", "user").put("content", cloudText)),
-            )
-            .toString()
-            .toByteArray(Charsets.UTF_8)
-
-        if (payload.size > MAX_REQUEST_BYTES) throw DialogueRouter.ProviderException("PROVIDER_REQUEST_TOO_LARGE")
-
         return try {
             connection.setFixedLengthStreamingMode(payload.size)
             connection.outputStream.use { it.write(payload) }
@@ -92,6 +112,14 @@ class HttpsDialogueProvider(
             connection.disconnect()
         }
     }
+
+    private fun isRetryable(code: String): Boolean = code in setOf(
+        "PROVIDER_REMOTE_TIMEOUT",
+        "PROVIDER_DNS_FAILED",
+        "PROVIDER_TLS_FAILED",
+        "PROVIDER_NETWORK_FAILED",
+        "PROVIDER_UPSTREAM_FAILED",
+    )
 
     private fun httpError(status: Int) = DialogueRouter.ProviderException(
         when (status) {
@@ -123,7 +151,22 @@ class HttpsDialogueProvider(
             val choices = root.optJSONArray("choices") ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
             val first = choices.optJSONObject(0) ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
             val message = first.optJSONObject("message") ?: throw DialogueRouter.ProviderException("PROVIDER_RESPONSE_INVALID")
-            val content = message.optString("content", "").trim()
+            val rawContent = message.opt("content")
+            val content = when (rawContent) {
+                null, JSONObject.NULL -> ""
+                is String -> rawContent.trim()
+                is JSONArray -> buildString {
+                    for (index in 0 until rawContent.length()) {
+                        val part = rawContent.optJSONObject(index) ?: continue
+                        val textValue = part.opt("text")
+                        if (textValue is String && textValue.isNotBlank()) {
+                            if (isNotEmpty()) append(' ')
+                            append(textValue.trim())
+                        }
+                    }
+                }.trim()
+                else -> ""
+            }
             if (content.isEmpty()) throw DialogueRouter.ProviderException("PROVIDER_EMPTY_REPLY")
             return content.take(DialogueRouter.MAX_REPLY_CHARS)
         } catch (error: DialogueRouter.ProviderException) {
@@ -150,8 +193,10 @@ class HttpsDialogueProvider(
     }
 
     companion object {
-        private const val CONNECT_TIMEOUT_MS = 3_000
-        private const val READ_TIMEOUT_MS = 20_000
+        private const val CONNECT_TIMEOUT_MS = 5_000
+        private const val READ_TIMEOUT_MS = 25_000
+        private const val MAX_ATTEMPTS = 2
+        private const val RETRY_DELAY_MS = 700L
         private const val MAX_REQUEST_BYTES = 8 * 1024
         private const val MAX_RESPONSE_BYTES = 32 * 1024
         private val IP_LITERAL = Regex("^(?:\\d{1,3}\\.){3}\\d{1,3}$|^[0-9a-fA-F:]+$")
