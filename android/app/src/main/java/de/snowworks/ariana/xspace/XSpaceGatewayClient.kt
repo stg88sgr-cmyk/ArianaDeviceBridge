@@ -18,7 +18,7 @@ import java.util.concurrent.TimeUnit
  */
 object XSpaceGatewayClient {
     private const val GATEWAY_URL = "ws://127.0.0.1:8877/xspace/ws"
-    private val spaceUrlPattern = Regex("^https://(?:www\\.)?x\\.com/i/spaces/[A-Za-z0-9_-]{4,128}(?:[/?#].*)?$")
+    private val spaceUrlPattern = Regex("^https://(?:www\\.)?(?:x\\.com|twitter\\.com)/i/spaces/[A-Za-z0-9_-]{4,128}(?:[/?#].*)?$")
 
     data class Snapshot(
         val connected: Boolean = false,
@@ -159,10 +159,11 @@ object XSpaceGatewayClient {
                 lastSpeaker = event.optString("speaker").takeIf { it.isNotBlank() },
             )
             "error" -> snapshot = snapshot.copy(lastError = event.optString("message", "XSPACE_GATEWAY_ERROR"))
-            "status" -> snapshot = snapshot.copy(
-                connected = event.optBoolean("connected", snapshot.connected),
-                joined = event.optBoolean("joined", snapshot.joined),
+            "state", "status" -> snapshot = snapshot.copy(
+                connected = true,
+                joined = event.optBoolean("connected", snapshot.joined),
                 muted = event.optBoolean("muted", snapshot.muted),
+                spaceUrl = event.optString("activeSpaceUrl").takeIf { it.isNotBlank() } ?: snapshot.spaceUrl,
                 lastStatus = event.optString("agentStatus").takeIf { it.isNotBlank() } ?: snapshot.lastStatus,
             )
         }
