@@ -38,10 +38,17 @@ jobs:
         run: |
           set -euo pipefail
           router='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiRouter.kt'
+          judge='android/app/src/main/java/de/snowworks/ariana/bridge/MultiAiJudge.kt'
+          health='android/app/src/main/java/de/snowworks/ariana/bridge/AiProviderHealth.kt'
+          store='android/app/src/main/java/de/snowworks/ariana/bridge/SecureAiProviderStore.kt'
+          manager='android/app/src/main/java/de/snowworks/ariana/bridge/AiProviderManager.kt'
           dialogue='android/app/src/main/java/de/snowworks/ariana/bridge/DialogueRouter.kt'
           app='android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
           settings='android/app/src/main/java/de/snowworks/app/ui/AiProviderSettingsActivity.kt'
+
           test -f "$router"
+          test -f "$judge"
+          test -f "$health"
           grep -F 'enum class Mode' "$router"
           grep -F 'Mode.META' "$router"
           grep -F 'Mode.PARALLEL' "$router"
@@ -51,6 +58,28 @@ jobs:
           grep -F 'HttpsDialogueProvider' "$router"
           grep -F 'remoteProviderIsPrimary' "$router"
           grep -F 'DISTINCT_PRIMARY_UNAVAILABLE' "$router"
+          grep -F 'MultiAiJudge.decide' "$router"
+          grep -F 'AiProviderHealth.acquireAttempt' "$router"
+          grep -F 'META_CIRCUIT_OPEN' "$router"
+
+          grep -F 'enum class Verdict' "$judge"
+          grep -F 'PRIMARY' "$judge"
+          grep -F 'META' "$judge"
+          grep -F 'MERGE' "$judge"
+          grep -F 'Sicherheit/Datenschutz' "$judge"
+
+          grep -F 'FAILURE_THRESHOLD = 3' "$health"
+          grep -F 'COOLDOWN_MS = 60_000L' "$health"
+          grep -F 'halfOpenProbeInFlight' "$health"
+          grep -F 'PROVIDER_AUTH_FAILED' android/app/src/test/java/de/snowworks/ariana/bridge/AiProviderHealthTest.kt
+
+          grep -F 'KEY_PREVIOUS_CONFIG' "$store"
+          grep -F 'fun restorePrevious()' "$store"
+          grep -F 'fun hasRecoverySnapshot()' "$store"
+          grep -F 'fun restorePrevious(context: Context)' "$manager"
+          grep -F 'recoveryAvailable' "$manager"
+          grep -F 'Letzten Provider-Stand wiederherstellen' "$settings"
+
           grep -F '"/meta"' "$dialogue"
           grep -F '"/parallel"' "$dialogue"
           grep -F '"/review"' "$dialogue"
