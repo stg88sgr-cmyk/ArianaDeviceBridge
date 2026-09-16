@@ -66,6 +66,22 @@ object AiProviderRecoverySupervisor {
         executor = null
     }
 
+    fun clearTelemetry(context: Context, slot: CloudProviderRegistry.Slot) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val editor = prefs.edit()
+        when (slot) {
+            CloudProviderRegistry.Slot.CLAUDE -> editor
+                .remove(KEY_CLAUDE_LAST)
+                .remove(KEY_CLAUDE_SUCCESS)
+                .remove(KEY_CLAUDE_ERROR)
+            CloudProviderRegistry.Slot.META -> editor
+                .remove(KEY_META_LAST)
+                .remove(KEY_META_SUCCESS)
+                .remove(KEY_META_ERROR)
+        }
+        editor.apply()
+    }
+
     fun status(context: Context, nowWallMs: Long = System.currentTimeMillis()): Status {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         return Status(
