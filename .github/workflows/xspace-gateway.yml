@@ -7,14 +7,20 @@ on:
       - 'x88/xspace-*'
     paths:
       - 'integrations/xspace-gateway/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/xspace/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+      - 'android/app/build.gradle.kts'
       - '.github/workflows/xspace-gateway.yml'
   pull_request:
     paths:
       - 'integrations/xspace-gateway/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/xspace/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+      - 'android/app/build.gradle.kts'
       - '.github/workflows/xspace-gateway.yml'
 
 jobs:
-  build-smoke:
+  gateway-build-smoke:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -27,3 +33,18 @@ jobs:
       - run: npm install
       - run: npm run build
       - run: npm run smoke
+
+  android-compile:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: chmod +x gradlew
+      - run: ./gradlew :app:compileDebugKotlin --stacktrace
