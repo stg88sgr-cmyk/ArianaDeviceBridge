@@ -16,6 +16,7 @@ import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
+import de.snowworks.ariana.bridge.AiProviderQualityStore
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.AiRouteStateStore
@@ -179,6 +180,8 @@ class X88HealthActivity : AppCompatActivity() {
         val metrics = AiRouterMetricsStore.snapshot(this)
         val trends = AiRouterTrendStore.snapshot(this)
         val trendAssessment = AiRouterTrendAssessment.assess(trends)
+        val claudeQuality = AiProviderQualityStore.snapshot(this, AiProviderQualityStore.Engine.CLAUDE)
+        val metaQuality = AiProviderQualityStore.snapshot(this, AiProviderQualityStore.Engine.META)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -200,6 +203,10 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
             ai.route.fallbackReason?.let { appendLine("Fallback-Ursache: $it") }
             appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
+            appendLine()
+            appendLine("PROVIDER QUALITY · LIFETIME")
+            appendLine(providerQualityLine(claudeQuality))
+            appendLine(providerQualityLine(metaQuality))
             appendLine()
             appendLine("ROUTER METRICS · LIFETIME")
             appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
@@ -252,6 +259,16 @@ class X88HealthActivity : AppCompatActivity() {
                 appendLine("${feature.title}: permission=${status.permissionGranted} · active=${status.sessionActive} · ${status.permissionLabel}")
             }
         }
+    }
+
+    private fun providerQualityLine(status: AiProviderQualityStore.Snapshot): String = buildString {
+        append(status.engine.name).append(": selected=").append(status.selected)
+        append(" · executed=").append(status.executed)
+        append(" · success=").append(formatPercent(status.successRatePercent))
+        append(" · error=").append(formatPercent(status.errorRatePercent))
+        append(" · fallback-share=").append(formatPercent(status.fallbackSharePercent))
+        append(" · circuit-rejected=").append(status.circuitRejected)
+        append(" · execution=").append(formatPercent(status.executionRatePercent))
     }
 
     private fun trendLine(label: String, window: AiRouterTrendStore.Window): String = buildString {
