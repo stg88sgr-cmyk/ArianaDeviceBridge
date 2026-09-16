@@ -46,6 +46,7 @@
         <activity android:name=".ui.X88CharacterActivity" android:exported="false" android:label="ARIANA X-88 Character" />
         <activity android:name=".ui.X88CharacterGenerateActivity" android:exported="false" android:label="ARIANA X-88 Generate" />
         <activity android:name=".ui.X88CharacterGalleryActivity" android:exported="false" android:label="ARIANA X-88 Gallery" />
+        <activity android:name=".ui.X88ResonanceActivity" android:exported="false" android:label="ARIANA X-88 Resonance" />
 
         <activity
             android:name=".ui.X88HomeActivity"
