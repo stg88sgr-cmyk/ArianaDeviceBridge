@@ -28,6 +28,7 @@ object SmartAiRouter {
         val reply: String? = null,
         val fallbackUsed: Boolean = false,
         val error: String? = null,
+        val fallbackReason: String? = null,
     )
 
     fun classify(rawText: String): TaskClass {
@@ -79,19 +80,26 @@ object SmartAiRouter {
         originalText: String,
         taskClass: TaskClass,
     ): Result {
+        var reason: String? = null
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
         if (claude != null) {
             val result = callClaude(claude, cloudText, taskClass)
             if (result.ok) return result
+            reason = appendReason(reason, result.error ?: "CLAUDE_FAILED")
+        } else {
+            reason = appendReason(reason, "CLAUDE_NOT_CONFIGURED")
         }
 
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
             val result = callMeta(meta, cloudText, taskClass)
-            if (result.ok) return result.copy(fallbackUsed = true)
+            if (result.ok) return result.copy(fallbackUsed = true, fallbackReason = reason)
+            reason = appendReason(reason, result.error ?: "META_FAILED")
+        } else {
+            reason = appendReason(reason, "META_NOT_CONFIGURED")
         }
 
-        return callLocal(originalText, taskClass, fallback = true)
+        return callLocal(originalText, taskClass, fallback = true, fallbackReason = reason)
     }
 
     private fun callMetaClaudeLocal(
@@ -100,22 +108,34 @@ object SmartAiRouter {
         originalText: String,
         taskClass: TaskClass,
     ): Result {
+        var reason: String? = null
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
             val result = callMeta(meta, cloudText, taskClass)
             if (result.ok) return result
+            reason = appendReason(reason, result.error ?: "META_FAILED")
+        } else {
+            reason = appendReason(reason, "META_NOT_CONFIGURED")
         }
 
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
         if (claude != null) {
             val result = callClaude(claude, cloudText, taskClass)
-            if (result.ok) return result.copy(fallbackUsed = true)
+            if (result.ok) return result.copy(fallbackUsed = true, fallbackReason = reason)
+            reason = appendReason(reason, result.error ?: "CLAUDE_FAILED")
+        } else {
+            reason = appendReason(reason, "CLAUDE_NOT_CONFIGURED")
         }
 
-        return callLocal(originalText, taskClass, fallback = true)
+        return callLocal(originalText, taskClass, fallback = true, fallbackReason = reason)
     }
 
-    private fun callLocal(text: String, taskClass: TaskClass, fallback: Boolean = false): Result {
+    private fun callLocal(
+        text: String,
+        taskClass: TaskClass,
+        fallback: Boolean = false,
+        fallbackReason: String? = null,
+    ): Result {
         val outcome = DialogueRouter.generateActiveProvider(text)
         return Result(
             ok = outcome.ok,
@@ -124,6 +144,7 @@ object SmartAiRouter {
             reply = outcome.reply,
             fallbackUsed = fallback,
             error = outcome.error,
+            fallbackReason = fallbackReason,
         )
     }
 
@@ -170,6 +191,9 @@ object SmartAiRouter {
             Result(false, taskClass, providerId = providerId, error = "META_PROVIDER_FAILED")
         }
     }
+
+    private fun appendReason(current: String?, next: String): String =
+        if (current.isNullOrBlank()) next else "$current > $next"
 
     private fun providerId(prefix: String, config: SecureAiProviderStore.Config): String {
         val host = runCatching { URI(config.endpoint).host.orEmpty() }.getOrDefault("")
