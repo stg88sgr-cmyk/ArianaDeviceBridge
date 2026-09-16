@@ -42,6 +42,16 @@ android {
             isMinifyEnabled = false
             applicationIdSuffix = ".debug"
             buildConfigField("boolean", "BOOTSTRAP", "false")
+            buildConfigField("boolean", "SAFE_INSTALL", "false")
+            if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
+        }
+        create("safeinstall") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".safe"
+            versionNameSuffix = "-safe"
+            buildConfigField("boolean", "BOOTSTRAP", "false")
+            buildConfigField("boolean", "SAFE_INSTALL", "true")
+            matchingFallbacks += listOf("debug")
             if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         create("sideload") {
@@ -49,6 +59,7 @@ android {
             applicationIdSuffix = ".sideload"
             versionNameSuffix = "-sideload"
             buildConfigField("boolean", "BOOTSTRAP", "false")
+            buildConfigField("boolean", "SAFE_INSTALL", "false")
             matchingFallbacks += listOf("debug")
             if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
@@ -57,12 +68,14 @@ android {
             applicationIdSuffix = ".bootstrap"
             versionNameSuffix = "-bootstrap"
             buildConfigField("boolean", "BOOTSTRAP", "true")
+            buildConfigField("boolean", "SAFE_INSTALL", "false")
             matchingFallbacks += listOf("debug")
             if (arianaStableDebugSigningAvailable) signingConfig = signingConfigs.getByName("arianaStableDebug")
         }
         release {
             isMinifyEnabled = true
             buildConfigField("boolean", "BOOTSTRAP", "false")
+            buildConfigField("boolean", "SAFE_INSTALL", "false")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
