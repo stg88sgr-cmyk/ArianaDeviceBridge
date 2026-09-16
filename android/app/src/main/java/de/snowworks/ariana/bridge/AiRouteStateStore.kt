@@ -26,7 +26,7 @@ object AiRouteStateStore {
     private const val KEY_FALLBACK = "fallback"
     private const val KEY_UPDATED = "updated"
     private const val KEY_HISTORY = "history_v1"
-    private const val MAX_HISTORY = 12
+    internal const val MAX_HISTORY = 12
 
     @Synchronized
     fun publish(context: Context, result: SmartAiRouter.Result) {
@@ -41,6 +41,7 @@ object AiRouteStateStore {
         val previous = read(app)
         val now = System.currentTimeMillis()
         val task = result.taskClass.name
+        val next = State(engine, task, result.fallbackUsed, now)
 
         prefs.edit()
             .putString(KEY_ENGINE, engine)
@@ -49,11 +50,7 @@ object AiRouteStateStore {
             .putLong(KEY_UPDATED, now)
             .apply()
 
-        if (previous.updatedAtMs == 0L ||
-            previous.engine != engine ||
-            previous.taskClass != task ||
-            previous.fallbackUsed != result.fallbackUsed
-        ) {
+        if (shouldRecordTransition(previous, next)) {
             appendHistory(prefs, HistoryEntry(engine, task, result.fallbackUsed, now))
         }
     }
@@ -98,6 +95,15 @@ object AiRouteStateStore {
         }
     }
 
+    internal fun shouldRecordTransition(previous: State, next: State): Boolean =
+        previous.updatedAtMs == 0L ||
+            previous.engine != next.engine ||
+            previous.taskClass != next.taskClass ||
+            previous.fallbackUsed != next.fallbackUsed
+
+    internal fun historyStartIndex(existingCount: Int): Int =
+        maxOf(0, existingCount - (MAX_HISTORY - 1))
+
     private fun appendHistory(
         prefs: android.content.SharedPreferences,
         entry: HistoryEntry,
@@ -106,7 +112,7 @@ object AiRouteStateStore {
             JSONArray(prefs.getString(KEY_HISTORY, "[]") ?: "[]")
         }.getOrElse { JSONArray() }
         val compact = JSONArray()
-        val start = maxOf(0, existing.length() - (MAX_HISTORY - 1))
+        val start = historyStartIndex(existing.length())
         for (index in start until existing.length()) compact.put(existing.optJSONObject(index))
         compact.put(
             JSONObject()
