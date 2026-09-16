@@ -15,9 +15,11 @@ PR: `#37`
 - `ApkTrustPolicy` enforces package allowlist plus signer continuity against the installed Snowworks app.
 - `ApkManager` discovers APK downloads through `MediaStore.Downloads` on Android 10+ and stages them into app-private storage.
 - `ApkInstaller` creates a trusted Android `PackageInstaller` session and never installs an APK that failed trust evaluation.
-- `ApkInstallReceiver` handles PackageInstaller status and Android-required user confirmation.
+- `ApkInstallReceiver` handles PackageInstaller callbacks and Android-required user confirmation.
+- `ApkInstallStatusStore` persists started/pending/success/failure plus package, session id, Android status and message across restarts.
+- `ApkBridgeStatus` provides read-only JSON snapshots for status, download list and latest-APK inspection, including `canRequestPackageInstalls()`.
 - Manifest declares `REQUEST_INSTALL_PACKAGES` and registers the install-status receiver.
-- `ActionPolicy` now includes read-only APK status/list/inspect actions and a confirmation-gated `apk_install_latest` action.
+- `ActionPolicy` includes read-only APK status/list/inspect actions and a confirmation-gated `apk_install_latest` action.
 - `LocalDeviceActionExecutor` can execute `apk_install_latest` only after consuming a matching one-time approval grant.
 
 ## Security boundary
@@ -29,11 +31,11 @@ PR: `#37`
 
 ## Current build gate
 
-GitHub Actions has been triggered for the current branch head. Final acceptance waits for a green Android build.
+GitHub Actions is triggered for every branch commit. Final acceptance waits for a green Android build of the newest head.
 
 ## Next build step
 
-1. Wire `apk_status`, `apk_list`, and `apk_inspect_latest` into `LocalBridgeServer` JSON responses.
-2. Surface install-source readiness via `PackageManager.canRequestPackageInstalls()`.
-3. Add install result persistence for last session/status/error.
-4. Add tests around trust rejection and APK staging.
+1. Wire `ApkBridgeStatus.status/list/inspectLatest` into `LocalBridgeServer` actions `apk_status`, `apk_list`, `apk_inspect_latest`.
+2. Add focused tests for persisted install status and trust rejection.
+3. Return `apk_install_latest` execution result through the bridge's approved-action path.
+4. Run build gate and preserve the green head SHA in this checkpoint.
