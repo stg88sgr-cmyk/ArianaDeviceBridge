@@ -10,6 +10,9 @@ import de.snowworks.ariana.notify.NotificationStore
 import de.snowworks.ariana.presence.PresenceSignalController
 import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.xspace.XSpaceBridgeActionRouter
+import de.snowworks.ariana.xspace.XSpaceConfirmedActionExecutor
+import de.snowworks.ariana.xspace.XSpaceGatewayClient
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.InputStream
@@ -80,6 +83,8 @@ object LocalBridgeServer {
     fun stop() {
         running.set(false)
         DialogueSessionStore.revoke()
+        XSpaceGatewayClient.disconnect()
+        XSpaceConfirmedActionExecutor.revokeAll()
         runCatching { serverSocket?.close() }
         serverSocket = null
         worker?.interrupt()
@@ -305,7 +310,25 @@ object LocalBridgeServer {
         val json = runCatching { JSONObject(body) }.getOrElse {
             return error("INVALID_JSON", "JSON konnte nicht gelesen werden.", requestId)
         }
-        val action = json.optString("action")
+        val action = json.optString("action").trim().lowercase()
+        if (action.isEmpty()) {
+            return error("INVALID_ACTION", "Aktionsname fehlt.", requestId)
+        }
+
+        if (XSpaceBridgeActionRouter.supports(action)) {
+            val payload = json.optJSONObject("payload") ?: JSONObject().apply {
+                if (json.has("spaceUrl")) put("spaceUrl", json.optString("spaceUrl"))
+                if (json.has("text")) put("text", json.optString("text"))
+                if (json.has("gatewayToken")) put("gatewayToken", json.optString("gatewayToken"))
+            }
+            return XSpaceBridgeActionRouter.dispatch(
+                context = context.applicationContext,
+                requestId = requestId,
+                action = action,
+                payload = payload,
+            )
+        }
+
         val gate = ArianaGate(context)
         if (action !in setOf(
                 "stop_all",
@@ -379,6 +402,8 @@ object LocalBridgeServer {
                 ArianaCaptureService.stopAll(context)
                 SessionRegistry.clear()
                 DialogueSessionStore.revoke()
+                XSpaceGatewayClient.disconnect()
+                XSpaceConfirmedActionExecutor.revokeAll()
                 ok(requestId)
             }
             "camera_start", "microphone_start", "screen_start" ->
