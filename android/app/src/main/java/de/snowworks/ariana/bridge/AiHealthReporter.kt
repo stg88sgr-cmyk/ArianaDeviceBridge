@@ -19,6 +19,8 @@ object AiHealthReporter {
         val circuitOpen: Boolean = false,
         val consecutiveFailures: Int = 0,
         val halfOpenProbeInFlight: Boolean = false,
+        val recoveryProbeReady: Boolean = false,
+        val cooldownRemainingMs: Long = 0L,
         val lastError: String? = null,
     )
 
@@ -56,6 +58,8 @@ object AiHealthReporter {
             circuitOpen = health.circuitOpen,
             consecutiveFailures = health.consecutiveFailures,
             halfOpenProbeInFlight = health.halfOpenProbeInFlight,
+            recoveryProbeReady = health.recoveryProbeReady,
+            cooldownRemainingMs = health.cooldownRemainingMs,
             lastError = health.lastError,
         )
     }
