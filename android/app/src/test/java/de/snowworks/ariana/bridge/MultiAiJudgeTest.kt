@@ -31,6 +31,24 @@ class MultiAiJudgeTest {
     }
 
     @Test
+    fun primaryVerdictMayReusePrimaryWhenFinalIsEmpty() {
+        val parsed = MultiAiJudge.parse("VERDICT: PRIMARY RATIONALE: Primary is correct. FINAL:")!!
+        assertEquals("primary answer", MultiAiJudge.resolveFinalReply(parsed, "primary answer", "meta answer"))
+    }
+
+    @Test
+    fun metaVerdictMayReuseMetaWhenFinalIsEmpty() {
+        val parsed = MultiAiJudge.parse("VERDICT: META RATIONALE: Meta is clearer. FINAL:")!!
+        assertEquals("meta answer", MultiAiJudge.resolveFinalReply(parsed, "primary answer", "meta answer"))
+    }
+
+    @Test
+    fun mergeVerdictRequiresRealFinalAnswer() {
+        val parsed = MultiAiJudge.parse("VERDICT: MERGE RATIONALE: Both add value. FINAL:")!!
+        assertNull(MultiAiJudge.resolveFinalReply(parsed, "primary answer", "meta answer"))
+    }
+
+    @Test
     fun judgePromptFitsDialogueLimitAndContainsRubric() {
         val longText = "x".repeat(2_000)
         val prompt = MultiAiJudge.buildPrompt(longText, longText, longText)
