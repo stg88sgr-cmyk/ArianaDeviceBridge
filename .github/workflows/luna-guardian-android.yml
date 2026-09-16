@@ -3,10 +3,14 @@ name: Build Luna Guardian APK
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "x88-evolution-g2" ]
     paths:
       - "luna-guardian/**"
       - ".github/workflows/luna-guardian-android.yml"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/LunaGuardianClient.kt"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/X88EgressPolicy.kt"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/ArianaResult.kt"
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/X88SecurityAudit.kt"
 
 jobs:
   build:
@@ -36,9 +40,13 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Build debug APK
+      - name: Build Luna Guardian debug APK
         working-directory: build-luna/LunaGuardian-android
         run: gradle :app:assembleDebug --stacktrace
+
+      - name: Build X-88 bridge tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
