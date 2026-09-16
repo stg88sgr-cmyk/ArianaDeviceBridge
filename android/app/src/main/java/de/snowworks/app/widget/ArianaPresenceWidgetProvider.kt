@@ -9,6 +9,7 @@ import android.content.Intent
 import android.widget.RemoteViews
 import de.snowworks.app.R
 import de.snowworks.app.ui.X88HomeActivity
+import de.snowworks.ariana.bridge.AiRouteStateStore
 
 class ArianaPresenceWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -24,9 +25,10 @@ class ArianaPresenceWidgetProvider : AppWidgetProvider() {
 
         private fun render(context: Context, manager: AppWidgetManager, appWidgetId: Int) {
             val state = PresenceWidgetStateStore.read(context)
+            val ai = AiRouteStateStore.label(context)
             val views = RemoteViews(context.packageName, R.layout.ariana_presence_widget)
             views.setTextViewText(R.id.widget_core_status, state.core)
-            views.setTextViewText(R.id.widget_dialog_status, state.dialog)
+            views.setTextViewText(R.id.widget_dialog_status, "${state.dialog} · $ai")
             views.setTextViewText(R.id.widget_wakeword_status, state.wakeword)
             PresenceAvatarBitmap.get(context)?.let { avatar ->
                 views.setImageViewBitmap(R.id.widget_avatar, avatar)
