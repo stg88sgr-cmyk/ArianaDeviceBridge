@@ -196,12 +196,19 @@ object MultiAiRouter {
         val config = SecureAiProviderStore(context.applicationContext).load()
             ?: return RemoteOutcome(false, error = "META_NOT_CONFIGURED")
         val providerId = remoteProviderId(config)
+        if (!AiProviderHealth.acquireAttempt(providerId)) {
+            return RemoteOutcome(false, providerId, error = "META_CIRCUIT_OPEN")
+        }
+
         return try {
             val reply = HttpsDialogueProvider(config).generate(text)
+            AiProviderHealth.recordSuccess(providerId)
             RemoteOutcome(true, providerId, reply)
         } catch (error: DialogueRouter.ProviderException) {
+            AiProviderHealth.recordFailure(providerId, error.code)
             RemoteOutcome(false, providerId, error = error.code)
         } catch (_: Exception) {
+            AiProviderHealth.recordFailure(providerId, "META_PROVIDER_FAILED")
             RemoteOutcome(false, providerId, error = "META_PROVIDER_FAILED")
         }
     }
