@@ -61,6 +61,7 @@ object XSpaceBridgeActionRouter {
                     action = normalized,
                     payload = payload,
                 )
+                XSpaceApprovalNotifier.post(context.applicationContext, review)
 
                 JSONObject()
                     .put("ok", false)
