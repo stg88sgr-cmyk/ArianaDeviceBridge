@@ -17,6 +17,7 @@ import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
 import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.AiProviderQualityStore
+import de.snowworks.ariana.bridge.AiProviderQualityTrendStore
 import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.AiRouteStateStore
@@ -182,6 +183,8 @@ class X88HealthActivity : AppCompatActivity() {
         val trendAssessment = AiRouterTrendAssessment.assess(trends)
         val claudeQuality = AiProviderQualityStore.snapshot(this, AiProviderQualityStore.Engine.CLAUDE)
         val metaQuality = AiProviderQualityStore.snapshot(this, AiProviderQualityStore.Engine.META)
+        val claudeQualityTrends = AiProviderQualityTrendStore.snapshot(this, AiProviderQualityStore.Engine.CLAUDE)
+        val metaQualityTrends = AiProviderQualityTrendStore.snapshot(this, AiProviderQualityStore.Engine.META)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -207,6 +210,12 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("PROVIDER QUALITY · LIFETIME")
             appendLine(providerQualityLine(claudeQuality))
             appendLine(providerQualityLine(metaQuality))
+            appendLine()
+            appendLine("PROVIDER QUALITY · TRENDS")
+            appendLine(providerQualityTrendLine("CLAUDE 24h", claudeQualityTrends.last24Hours))
+            appendLine(providerQualityTrendLine("CLAUDE 7d", claudeQualityTrends.last7Days))
+            appendLine(providerQualityTrendLine("META 24h", metaQualityTrends.last24Hours))
+            appendLine(providerQualityTrendLine("META 7d", metaQualityTrends.last7Days))
             appendLine()
             appendLine("ROUTER METRICS · LIFETIME")
             appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
@@ -269,6 +278,16 @@ class X88HealthActivity : AppCompatActivity() {
         append(" · fallback-share=").append(formatPercent(status.fallbackSharePercent))
         append(" · circuit-rejected=").append(status.circuitRejected)
         append(" · execution=").append(formatPercent(status.executionRatePercent))
+    }
+
+    private fun providerQualityTrendLine(label: String, window: AiProviderQualityTrendStore.Window): String = buildString {
+        append(label).append(": selected=").append(window.selected)
+        append(" · executed=").append(window.executed)
+        append(" · success=").append(formatPercent(window.successRatePercent))
+        append(" · error=").append(formatPercent(window.errorRatePercent))
+        append(" · fallback-share=").append(formatPercent(window.fallbackSharePercent))
+        append(" · circuit-rejected=").append(window.circuitRejected)
+        append(" · execution=").append(formatPercent(window.executionRatePercent))
     }
 
     private fun trendLine(label: String, window: AiRouterTrendStore.Window): String = buildString {
