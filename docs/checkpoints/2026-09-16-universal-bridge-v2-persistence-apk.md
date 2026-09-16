@@ -29,7 +29,9 @@ PR: `#37`
 - `ApkInstallSourceController` reports install-source readiness and creates the Android system settings intent for this exact app.
 - `ApkHealthCheck` verifies install-source readiness, Download discovery, staging, APK parsing and signer trust without starting an install.
 - `ApkStatusActivity` shows human-readable APK status, latest inspection result, last install state and a dedicated APK self-test.
-- Health UI now links directly to the APK Manager and includes APK health in the combined release-gate self-test.
+- Health UI links directly to the APK Manager and includes APK health in the combined release-gate self-test.
+- `ApkBridgeRouteSelfTest` now exercises `/v2/apk/status`, `/v2/apk/list`, `/v2/apk/inspect/latest`, plus an invalid-token rejection over real loopback HTTP.
+- `X88HealthActivity` runs the APK route self-test together with the existing bridge and APK health checks.
 
 ## Security boundary
 
@@ -47,5 +49,5 @@ GitHub Actions is triggered for each branch update. Final acceptance waits for a
 ## Next build step
 
 1. Validate current branch head in CI and fix compile/runtime-contract issues if present.
-2. Add APK route checks directly to `BridgeSelfTest` so `/v2/apk/status`, `/list`, `/inspect/latest` are covered end-to-end.
-3. After green CI, promote PR #37 from draft and merge only after the release gate is clean.
+2. If the branch is green, make PR #37 ready for review and run a final release-gate check.
+3. Merge only after the release gate is clean.
