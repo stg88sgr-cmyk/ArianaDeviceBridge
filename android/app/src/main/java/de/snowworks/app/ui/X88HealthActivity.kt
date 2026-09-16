@@ -15,6 +15,7 @@ import de.snowworks.ariana.Feature
 import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
+import de.snowworks.ariana.bridge.AiAdaptiveRoutingShadow
 import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.AiProviderQualityAssessment
 import de.snowworks.ariana.bridge.AiProviderQualityStore
@@ -188,6 +189,7 @@ class X88HealthActivity : AppCompatActivity() {
         val metaQualityTrends = AiProviderQualityTrendStore.snapshot(this, AiProviderQualityStore.Engine.META)
         val claudeAssessment = AiProviderQualityAssessment.assess(claudeQualityTrends)
         val metaAssessment = AiProviderQualityAssessment.assess(metaQualityTrends)
+        val shadowPlan = AiAdaptiveRoutingShadow.evaluate(claudeAssessment, metaAssessment)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -223,6 +225,12 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("PROVIDER QUALITY · SELF-DIAGNOSIS")
             appendLine(providerAssessmentLine(claudeAssessment))
             appendLine(providerAssessmentLine(metaAssessment))
+            appendLine()
+            appendLine("ADAPTIVE ROUTING · SHADOW MODE")
+            appendLine("Empfehlung: ${shadowPlan.recommendation}")
+            appendLine("Live-Routing verändert: ${if (shadowPlan.changesLiveRouting) "JA" else "NEIN"}")
+            appendLine("Claude=${shadowPlan.claudeLevel} · Meta=${shadowPlan.metaLevel}")
+            appendLine("Signale: ${shadowPlan.reasons.joinToString(" > ")}")
             appendLine()
             appendLine("ROUTER METRICS · LIFETIME")
             appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
