@@ -191,6 +191,7 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine(providerLine(ai.claude))
             appendLine(providerLine(ai.meta))
             appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
+            ai.route.fallbackReason?.let { appendLine("Fallback-Ursache: $it") }
             appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
             appendLine()
             appendLine("ROUTER HISTORY")
@@ -198,7 +199,12 @@ class X88HealthActivity : AppCompatActivity() {
                 appendLine("noch keine Zustandswechsel")
             } else {
                 routeHistory.forEach { entry ->
-                    appendLine("${formatTime(entry.updatedAtMs)} · ${entry.engine} · ${entry.taskClass}${if (entry.fallbackUsed) " · FALLBACK" else ""}")
+                    appendLine(buildString {
+                        append(formatTime(entry.updatedAtMs)).append(" · ")
+                        append(entry.engine).append(" · ").append(entry.taskClass)
+                        if (entry.fallbackUsed) append(" · FALLBACK")
+                        entry.fallbackReason?.let { append(" · reason=").append(it) }
+                    })
                 }
             }
             appendLine()
