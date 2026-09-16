@@ -34,6 +34,8 @@ object ActionPolicy {
         "apk_status",
         "apk_list",
         "apk_inspect_latest",
+        "xspace_status",
+        "xspace_disconnect",
     )
 
     private val confirm = setOf(
@@ -50,6 +52,12 @@ object ActionPolicy {
         "presence_quiet",
         "presence_test",
         "apk_install_latest",
+        "xspace_connect",
+        "xspace_join",
+        "xspace_speak",
+        "xspace_mute",
+        "xspace_unmute",
+        "xspace_leave",
     )
 
     fun evaluate(context: Context, rawAction: String): Evaluation {
