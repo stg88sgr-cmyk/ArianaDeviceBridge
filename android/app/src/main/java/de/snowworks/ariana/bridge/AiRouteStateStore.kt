@@ -55,6 +55,8 @@ object AiRouteStateStore {
             if (reason.isNullOrBlank()) remove(KEY_REASON) else putString(KEY_REASON, reason)
         }.apply()
 
+        AiRouterMetricsStore.record(app, result)
+
         if (shouldRecordTransition(previous, next)) {
             appendHistory(prefs, HistoryEntry(engine, task, result.fallbackUsed, now, reason))
         }
