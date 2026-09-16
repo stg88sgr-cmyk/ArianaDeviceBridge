@@ -26,6 +26,11 @@ jobs:
           unzip -t luna-source.zip
           unzip -q luna-source.zip -d build-luna
 
+      - name: Inject user-visible VPN consent launcher
+        run: |
+          python luna-guardian/patches/inject_vpn_consent.py build-luna/LunaGuardian-android
+          grep -R "X88VpnConsentActivity" -n build-luna/LunaGuardian-android/app/src/main
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
