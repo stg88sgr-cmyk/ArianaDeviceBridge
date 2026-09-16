@@ -17,6 +17,8 @@ object AiProviderHealth {
         val circuitOpen: Boolean,
         val openUntilMs: Long,
         val halfOpenProbeInFlight: Boolean,
+        val recoveryProbeReady: Boolean,
+        val cooldownRemainingMs: Long,
         val lastError: String? = null,
     )
 
@@ -67,12 +69,16 @@ object AiProviderHealth {
     @Synchronized
     fun snapshot(providerId: String, nowMs: Long = monotonicNowMs()): Snapshot {
         val state = states[providerId] ?: State()
+        val circuitOpen = state.openUntilMs > nowMs
+        val recoveryProbeReady = state.openUntilMs > 0L && !circuitOpen && !state.halfOpenProbeInFlight
         return Snapshot(
             providerId = providerId,
             consecutiveFailures = state.consecutiveFailures,
-            circuitOpen = state.openUntilMs > nowMs,
+            circuitOpen = circuitOpen,
             openUntilMs = state.openUntilMs,
             halfOpenProbeInFlight = state.halfOpenProbeInFlight,
+            recoveryProbeReady = recoveryProbeReady,
+            cooldownRemainingMs = if (circuitOpen) state.openUntilMs - nowMs else 0L,
             lastError = state.lastError,
         )
     }
@@ -92,6 +98,7 @@ object AiProviderHealth {
         "PROVIDER_HTTP_FAILED",
         "PROVIDER_FAILED",
         "META_PROVIDER_FAILED",
+        "CLAUDE_PROVIDER_FAILED",
     )
 
     private fun monotonicNowMs(): Long = System.nanoTime() / 1_000_000L
