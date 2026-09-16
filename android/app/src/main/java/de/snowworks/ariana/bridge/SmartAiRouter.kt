@@ -41,15 +41,15 @@ object SmartAiRouter {
 
     fun route(context: Context, rawText: String): Result {
         val text = sanitize(rawText)
-        if (text.isBlank()) return Result(false, TaskClass.GENERAL, error = "INVALID_INPUT")
+        if (text.isBlank()) return publish(context, Result(false, TaskClass.GENERAL, error = "INVALID_INPUT"))
 
         val policy = CloudAiPolicy.evaluate(text)
         if (policy.disposition == CloudAiPolicy.Disposition.LOCAL_ONLY) {
-            return callLocal(text, TaskClass.PRIVATE_LOCAL)
+            return publish(context, callLocal(text, TaskClass.PRIVATE_LOCAL))
         }
 
         val registry = CloudProviderRegistry(context.applicationContext).also { it.migrateActiveIfNeeded() }
-        return when (val taskClass = classify(text)) {
+        val result = when (val taskClass = classify(text)) {
             TaskClass.PRIVATE_LOCAL -> callLocal(text, taskClass)
             TaskClass.CODE_ARCHITECTURE -> {
                 val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
@@ -67,6 +67,12 @@ object SmartAiRouter {
             }
             TaskClass.GENERAL -> callLocal(text, taskClass)
         }
+        return publish(context, result)
+    }
+
+    private fun publish(context: Context, result: Result): Result {
+        runCatching { AiRouteStateStore.publish(context, result) }
+        return result
     }
 
     private fun callClaudeOrLocal(
