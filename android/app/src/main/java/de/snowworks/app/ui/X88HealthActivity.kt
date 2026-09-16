@@ -15,6 +15,7 @@ import de.snowworks.ariana.Feature
 import de.snowworks.ariana.apk.ApkBridgeRouteSelfTest
 import de.snowworks.ariana.apk.ApkHealthCheck
 import de.snowworks.ariana.apk.ApkInstallSourceController
+import de.snowworks.ariana.bridge.AiHealthReporter
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.files.TreePermissionStore
 import de.snowworks.ariana.notify.NotificationStore
@@ -54,7 +55,7 @@ class X88HealthActivity : AppCompatActivity() {
 
         root.addView(text("ARIANA X-88", 12f, "#7E93A6"))
         root.addView(text("HEALTH · RELEASE GATE", 26f, "#EAF7FF"))
-        root.addView(text("Lokale Bridge, Gate, Session-Module, APK-Pipeline und echte Android-Thermalwerte.", 12f, "#8398A8"))
+        root.addView(text("Lokale Bridge, Multi-KI-Routing, Gate, Session-Module, APK-Pipeline und echte Android-Thermalwerte.", 12f, "#8398A8"))
 
         runButton = MaterialButton(this).apply {
             text = "Bridge + APK Self-Test starten"
@@ -62,6 +63,14 @@ class X88HealthActivity : AppCompatActivity() {
             setOnClickListener { runSelfTest() }
         }
         root.addView(runButton)
+
+        root.addView(
+            MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
+                text = "KI-Provider öffnen"
+                isAllCaps = false
+                setOnClickListener { startActivity(Intent(this@X88HealthActivity, AiProviderSettingsActivity::class.java)) }
+            },
+        )
 
         root.addView(
             MaterialButton(this, null, com.google.android.material.R.attr.materialButtonOutlinedStyle).apply {
@@ -145,6 +154,7 @@ class X88HealthActivity : AppCompatActivity() {
         val api = ArianaDeviceApi(this)
         val connection = api.getConnection()
         val thermal = ThermalSafetyController.currentSnapshot()
+        val ai = AiHealthReporter.snapshot(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
         val tracked = listOf(
@@ -166,6 +176,13 @@ class X88HealthActivity : AppCompatActivity() {
             appendLine("Bridge Detail: ${connection.detail}")
             appendLine("APK-Installationsquelle: ${if (ApkInstallSourceController.isReady(this@X88HealthActivity)) "READY" else "FREIGABE NÖTIG"}")
             appendLine()
+            appendLine("AI ROUTER HEALTH")
+            appendLine("LOCAL: ${ai.activeLocalProviderId ?: "nicht aktiv"}")
+            appendLine(providerLine(ai.claude))
+            appendLine(providerLine(ai.meta))
+            appendLine("Letzte Route: ${ai.route.engine} · ${ai.route.taskClass}${if (ai.route.fallbackUsed) " · FALLBACK" else ""}")
+            appendLine("Route-Zeit: ${if (ai.route.updatedAtMs > 0L) DateFormat.getDateTimeInstance().format(Date(ai.route.updatedAtMs)) else "noch keine"}")
+            appendLine()
             appendLine("THERMAL SAFETY")
             appendLine("Android Thermal API: ${if (thermal.supported) "AKTIV" else "NICHT UNTERSTÜTZT"}")
             appendLine("Status: ${thermal.label} (${thermal.status})")
@@ -181,6 +198,22 @@ class X88HealthActivity : AppCompatActivity() {
                 val status = api.getStatus(feature)
                 appendLine("${feature.title}: permission=${status.permissionGranted} · active=${status.sessionActive} · ${status.permissionLabel}")
             }
+        }
+    }
+
+    private fun providerLine(status: AiHealthReporter.ProviderStatus): String {
+        if (!status.configured) return "${status.engine}: NICHT KONFIGURIERT"
+        val state = when {
+            status.circuitOpen -> "CIRCUIT OPEN"
+            status.halfOpenProbeInFlight -> "HALF-OPEN PROBE"
+            status.consecutiveFailures > 0 -> "ATTENTION"
+            else -> "READY"
+        }
+        return buildString {
+            append(status.engine).append(": ").append(state)
+            status.model?.let { append(" · ").append(it) }
+            append(" · failures=").append(status.consecutiveFailures)
+            status.lastError?.let { append(" · last=").append(it) }
         }
     }
 
