@@ -20,6 +20,7 @@ import de.snowworks.ariana.bridge.AiProviderRecoveryProbe
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
 import de.snowworks.ariana.bridge.AiRouteStateStore
 import de.snowworks.ariana.bridge.AiRouterMetricsStore
+import de.snowworks.ariana.bridge.AiRouterTrendStore
 import de.snowworks.ariana.bridge.BridgeSelfTest
 import de.snowworks.ariana.bridge.CloudProviderRegistry
 import de.snowworks.ariana.files.TreePermissionStore
@@ -175,6 +176,7 @@ class X88HealthActivity : AppCompatActivity() {
         val ai = AiHealthReporter.snapshot(this)
         val routeHistory = AiRouteStateStore.history(this).takeLast(6).asReversed()
         val metrics = AiRouterMetricsStore.snapshot(this)
+        val trends = AiRouterTrendStore.snapshot(this)
         val supervisor = AiProviderRecoverySupervisor.status(this)
         val tree = TreePermissionStore(this).get()
         val notifications = NotificationStore.listRecent()
@@ -197,10 +199,14 @@ class X88HealthActivity : AppCompatActivity() {
             ai.route.fallbackReason?.let { appendLine("Fallback-Ursache: $it") }
             appendLine("Route-Zeit: ${formatTime(ai.route.updatedAtMs)}")
             appendLine()
-            appendLine("ROUTER METRICS")
+            appendLine("ROUTER METRICS · LIFETIME")
             appendLine("Gesamt: ${metrics.total} · LOCAL=${metrics.local} · CLAUDE=${metrics.claude} · META=${metrics.meta} · MULTI=${metrics.multi}")
             appendLine("Fallbacks: ${metrics.fallbacks} (${formatPercent(metrics.fallbackRatePercent)})")
             appendLine("Fehler: ${metrics.errors} (${formatPercent(metrics.errorRatePercent)})")
+            appendLine()
+            appendLine("ROUTER TRENDS")
+            appendLine(trendLine("24h", trends.last24Hours))
+            appendLine(trendLine("7d", trends.last7Days))
             appendLine()
             appendLine("ROUTER HISTORY")
             if (routeHistory.isEmpty()) {
@@ -237,6 +243,16 @@ class X88HealthActivity : AppCompatActivity() {
                 appendLine("${feature.title}: permission=${status.permissionGranted} · active=${status.sessionActive} · ${status.permissionLabel}")
             }
         }
+    }
+
+    private fun trendLine(label: String, window: AiRouterTrendStore.Window): String = buildString {
+        append(label).append(": total=").append(window.total)
+        append(" · L=").append(window.local)
+        append(" · C=").append(window.claude)
+        append(" · M=").append(window.meta)
+        append(" · X=").append(window.multi)
+        append(" · fallback=").append(formatPercent(window.fallbackRatePercent))
+        append(" · error=").append(formatPercent(window.errorRatePercent))
     }
 
     private fun providerLine(status: AiHealthReporter.ProviderStatus): String {
