@@ -1,42 +1,39 @@
 # Ariana X-88 X Space Gateway
 
-Local loopback gateway between the Android Ariana bridge and an X Spaces-capable agent process.
+Local-only adapter between Ariana X-88 and an X Space transport agent.
 
-## Security model
+## Architecture
 
-- Binds only to `127.0.0.1`.
-- Rejects non-loopback HTTP/WebSocket clients.
-- Optional bearer token via `X88_GATEWAY_TOKEN`.
-- Validates Space URLs and only accepts `https://x.com/i/spaces/...` or `https://twitter.com/i/spaces/...`.
-- Public speaking remains a separate command so Android policy/confirmation gates can decide whether it is allowed.
-
-## Protocol
-
-WebSocket endpoint: `ws://127.0.0.1:8877/xspace/ws`
-
-Commands:
-
-```json
-{"type":"join","url":"https://x.com/i/spaces/..."}
-{"type":"leave"}
-{"type":"speak","text":"Hello from Ariana"}
-{"type":"mute"}
-{"type":"unmute"}
-{"type":"status"}
+```text
+X Space
+  ↕
+xspace-agent / compatible adapter
+  ↕ JSON lines
+Ariana X-88 XSpace Gateway
+  ↕ WebSocket ws://127.0.0.1:8877/xspace/ws
+Android XSpaceGatewayClient
+  ↕
+Ariana Device Bridge / Core
 ```
 
-Expected agent events are newline-delimited JSON on stdout, for example:
+The gateway is deliberately bound to `127.0.0.1`. It is not a LAN service.
 
-```json
-{"type":"connected"}
-{"type":"transcript","speaker":"name","text":"hello","isFinal":true}
-{"type":"disconnected"}
-{"type":"error","message":"..."}
-```
+## Commands
 
-The gateway writes the same command objects as newline-delimited JSON to the child process stdin. This keeps X-specific browser/audio automation outside the Android app and lets the adapter be replaced without touching Ariana Core.
+The Android client can send:
 
-## Local smoke test
+- `join`
+- `leave`
+- `speak`
+- `mute`
+- `unmute`
+- `status`
+
+The gateway forwards transport events including transcripts and participant/status updates back to Android.
+
+## Development smoke agent
+
+Without a real X adapter, the gateway starts `mock-agent.mjs` by default. This gives deterministic protocol smoke coverage without X credentials.
 
 ```bash
 npm install
@@ -44,23 +41,35 @@ npm run build
 npm run smoke
 ```
 
-The smoke test uses `mock-agent.mjs`; it does not contact X.
+## Real xspace-agent adapter
 
-## Real adapter
+`xspace-agent-adapter.mjs` wraps the public `XSpaceAgent` lifecycle and event API behind the same JSON-lines contract used by the mock agent.
 
-Set `XSPACE_AGENT_CMD` to an adapter process that implements the JSON-lines contract. The adapter can wrap `xspace-agent`/XActions or another browser/audio implementation. Do not store X session cookies in the repository. Pass secrets at runtime via environment variables or the device secret store.
-
-Example startup:
+Example environment:
 
 ```bash
-XSPACE_AGENT_CMD="node real-xspace-adapter.mjs" \
-X88_GATEWAY_TOKEN="..." \
+export X_AUTH_TOKEN='...'
+export X_CT0='...'
+export XSPACE_AGENT_CMD='node xspace-agent-adapter.mjs'
+export XSPACE_AGENT_MODULE='xspace-agent'
 node dist/server.js
 ```
 
-## Status endpoints
+Ariana Core remains the reasoning owner. The adapter config uses `autoRespond: false`; incoming transcription is sent to Ariana and outgoing Ariana text can be returned with the `speak` command.
 
-- `GET /health`
-- `GET /state`
+## Android integration
 
-Both are loopback-only and require the bearer token when `X88_GATEWAY_TOKEN` is configured.
+The Android app contains `de.snowworks.ariana.xspace.XSpaceGatewayClient`, fixed to the loopback gateway endpoint. `ActionPolicy` classifies status/disconnect as safe and all public Space actions as confirmation-required.
+
+CI verifies both sides:
+
+- TypeScript gateway build + protocol smoke test
+- Android `:app:compileDebugKotlin`
+
+## Security invariants
+
+- gateway binds only to loopback
+- optional `X88_GATEWAY_TOKEN` bearer token
+- X Space URL validation before spawn/join
+- public speaking/join/mute state changes stay behind the Android confirmation policy
+- credentials remain environment/config values and are never committed
