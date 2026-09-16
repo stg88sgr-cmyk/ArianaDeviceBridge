@@ -1,0 +1,56 @@
+name: X88 XSpace Gateway
+
+on:
+  push:
+    branches:
+      - main
+      - 'x88/xspace-*'
+    paths:
+      - 'integrations/xspace-gateway/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/xspace/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+      - 'android/app/build.gradle.kts'
+      - '.github/workflows/xspace-gateway.yml'
+  pull_request:
+    paths:
+      - 'integrations/xspace-gateway/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/xspace/**'
+      - 'android/app/src/main/java/de/snowworks/ariana/bridge/ActionPolicy.kt'
+      - 'android/app/build.gradle.kts'
+      - '.github/workflows/xspace-gateway.yml'
+
+jobs:
+  gateway-build-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/xspace-gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - run: npm run build
+      - run: npm run smoke
+
+  android-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK without legacy tools package
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Compile Android Kotlin
+        working-directory: android
+        run: gradle :app:compileDebugKotlin --stacktrace
