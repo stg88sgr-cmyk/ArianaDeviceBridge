@@ -23,10 +23,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install shellcheck
+      - name: Install runtime test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y shellcheck
+          sudo apt-get install -y shellcheck tmux iproute2
 
       - name: Bash syntax gate
         run: |
@@ -46,7 +46,55 @@ jobs:
           set -euo pipefail
           grep -Fq '127.0.0.1' termux-runtime/runtime-common.sh
           grep -Fq '8765' termux-runtime/runtime-common.sh
+          grep -Fq 'X88_BRIDGE_OWNER="${X88_BRIDGE_OWNER:-android}"' termux-runtime/runtime-common.sh
           grep -Fq 'x88-bridge' termux-runtime/runtime-common.sh
           grep -Fq 'luna-xxy-worker' termux-runtime/runtime-common.sh
+          grep -Fq 'x88-adapter.sh' termux-runtime/install-termux-runtime.sh
+          grep -Fq 'luna-adapter.sh' termux-runtime/install-termux-runtime.sh
           grep -Fq -- '--require-boot' termux-runtime/x88-final-gate.sh
+          if grep -Fq 'x88-bridge-start.sh' termux-runtime/runtime-common.sh; then
+            echo 'Termux must not start a second listener on the Android bridge port' >&2
+            exit 1
+          fi
           echo 'Runtime contract GREEN'
+
+      - name: Real tmux integration gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          export HOME="$RUNNER_TEMP/x88-home"
+          export X88_HOME="$HOME/.ariana"
+          export LUNA_HOME="$HOME/.luna"
+          export X88_BIN="$HOME/bin"
+          export X88_RUNTIME_DIR="$X88_HOME/runtime"
+          export X88_LOG_DIR="$X88_HOME/logs"
+          export SHELL=/bin/bash
+
+          mkdir -p "$X88_BIN" "$X88_RUNTIME_DIR" "$X88_LOG_DIR" "$LUNA_HOME/logs"
+          cp termux-runtime/*.sh "$X88_BIN/"
+          chmod 700 "$X88_BIN"/*.sh
+
+          trap 'tmux kill-server 2>/dev/null || true' EXIT
+
+          bash "$X88_BIN/all-tmux-bootstrap.sh"
+          bash "$X88_BIN/all-tmux-bootstrap.sh"
+
+          for session in \
+            x88-bridge x88-build x88-logs \
+            luna-worker luna-bridge luna-build luna-xxy-worker luna-logs; do
+            tmux has-session -t "$session"
+          done
+
+          session_count="$(tmux list-sessions -F '#S' | grep -Ec '^(x88-|luna-)')"
+          test "$session_count" -eq 8
+
+          bash "$X88_BIN/x88-adapter.sh" BUILD 'printf "X88_CI_OK\n"' | grep -Fxq X88_CI_OK
+          bash "$X88_BIN/luna-adapter.sh" LUNA_XXY_WORKER 'printf "LUNA_CI_OK\n"' | grep -Fxq LUNA_CI_OK
+
+          mkdir -p "$X88_RUNTIME_DIR/bootstrap.lock"
+          printf '%s\n' stale-boot-id > "$X88_RUNTIME_DIR/bootstrap.lock/boot_id"
+          printf '%s\n' 999999 > "$X88_RUNTIME_DIR/bootstrap.lock/pid"
+          bash "$X88_BIN/all-tmux-bootstrap.sh"
+          test ! -e "$X88_RUNTIME_DIR/bootstrap.lock"
+
+          echo 'Real tmux integration GREEN'
