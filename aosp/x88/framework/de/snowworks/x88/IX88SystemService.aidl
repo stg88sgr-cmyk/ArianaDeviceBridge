@@ -5,6 +5,9 @@ package de.snowworks.x88;
  * Every implementation must enforce caller identity before mutating state.
  */
 interface IX88SystemService {
+    String getServiceName();
+    int getProtocolVersion();
+    String getPlatformCertificateSha256();
     String getStateSnapshot();
     String startSession();
     boolean stopSession(String sessionId);
