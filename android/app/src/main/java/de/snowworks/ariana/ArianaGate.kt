@@ -1,30 +1,44 @@
 package de.snowworks.ariana
 
 import android.content.Context
+import de.snowworks.ariana.system.X88Runtime
 
 /**
- * Master switch and stop-all latch. Does not grant or revoke Android permissions.
- * Never auto-enables after install, process death, or reboot — default is off.
+ * Master switch and stop-all latch backed by the canonical X-88 runtime.
+ * Android permissions remain separate and are never granted by this gate.
+ *
+ * Runtime authority is intentionally ephemeral: after process death the
+ * canonical runtime starts with master disabled and no active emergency or
+ * session authority restored from disk.
  */
 class ArianaGate(context: Context) {
-    private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val gateway = X88Runtime.gateway(context.applicationContext)
 
     val isMasterEnabled: Boolean
-        get() = prefs.getBoolean(KEY_MASTER, false)
+        get() = gateway.state().masterEnabled
 
     val isBlocked: Boolean
-        get() = prefs.getBoolean(KEY_BLOCKED, false)
-
-    fun setMasterEnabled(enabled: Boolean) {
-        if (enabled) {
-            prefs.edit().putBoolean(KEY_MASTER, true).putBoolean(KEY_BLOCKED, false).apply()
-        } else {
-            prefs.edit().putBoolean(KEY_MASTER, false).apply()
+        get() = gateway.state().let { state ->
+            state.emergencyStopActive || state.quarantineActive
         }
+
+    /**
+     * Applies an explicit master-switch decision.
+     *
+     * Re-enabling after STOP ALL first clears the emergency latch, then performs
+     * a separate master-enable transition. Quarantine cannot be cleared here.
+     * Returns true only when the requested state was actually reached.
+     */
+    fun setMasterEnabled(enabled: Boolean): Boolean {
+        if (enabled && gateway.state().emergencyStopActive) {
+            gateway.clearEmergencyStop()
+        }
+        gateway.setMasterEnabled(enabled)
+        return gateway.state().masterEnabled == enabled
     }
 
     fun blockAfterStopAll() {
-        prefs.edit().putBoolean(KEY_MASTER, false).putBoolean(KEY_BLOCKED, true).apply()
+        gateway.emergencyStop()
     }
 
     fun assertCanUse(): ArianaResult<Unit> {
@@ -45,11 +59,5 @@ class ArianaGate(context: Context) {
             )
         }
         return ArianaResult.Ok(Unit)
-    }
-
-    companion object {
-        private const val PREFS = "ariana_gate"
-        private const val KEY_MASTER = "master"
-        private const val KEY_BLOCKED = "blocked"
     }
 }
