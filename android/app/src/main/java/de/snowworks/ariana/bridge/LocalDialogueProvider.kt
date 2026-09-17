@@ -6,7 +6,7 @@ import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import java.io.File
 import java.util.Locale
 
-/** MediaPipe-backed, fully on-device text generator with bounded dialogue and durable explicit facts. */
+/** MediaPipe-backed, fully on-device text generator with bounded dialogue and durable continuity memory. */
 class LocalDialogueProvider(
     context: Context,
     private val modelFile: File,
@@ -18,6 +18,7 @@ class LocalDialogueProvider(
 
     private val appContext = context.applicationContext
     private val memoryStore = LocalMemoryStore(appContext)
+    private val dailyMemory = ArianaDailyMemoryCore(appContext)
     private val lock = Any()
     private val history = ArrayDeque<Turn>()
     @Volatile private var inference: LlmInference? = null
@@ -109,6 +110,7 @@ class LocalDialogueProvider(
 
     private fun gemmaPrompt(currentUserText: String): String = buildString {
         val persistent = memoryStore.snapshot()
+        val continuity = dailyMemory.recentContext(CONTINUITY_TURNS)
 
         append("<start_of_turn>user\n")
         append(SYSTEM_CORE)
@@ -127,8 +129,19 @@ class LocalDialogueProvider(
             }
         }
 
+        if (continuity.isNotEmpty()) {
+            append("\nKontinuität aus dem lokalen Tagesgedächtnis:\n")
+            continuity.forEach { turn ->
+                append("Nutzer: ")
+                append(turn.user.take(CONTINUITY_TEXT_CHARS))
+                append("\nAriana: ")
+                append(turn.assistant.take(CONTINUITY_TEXT_CHARS))
+                append('\n')
+            }
+        }
+
         if (history.isNotEmpty()) {
-            append("\nLetzte Gesprächszüge:\n")
+            append("\nLetzte Gesprächszüge dieser Sitzung:\n")
             history.forEach { turn ->
                 append("Nutzer: ")
                 append(turn.user)
@@ -291,6 +304,7 @@ class LocalDialogueProvider(
         while (history.size > HISTORY_TURNS) {
             history.removeFirst()
         }
+        runCatching { dailyMemory.appendTurn(user, assistant) }
     }
 
     override fun close() {
@@ -305,6 +319,8 @@ class LocalDialogueProvider(
         const val HISTORY_TURNS = 4
         const val HISTORY_TEXT_CHARS = 300
         const val LOCAL_INPUT_CHARS = 700
+        const val CONTINUITY_TURNS = 6
+        const val CONTINUITY_TEXT_CHARS = 260
 
         val USER_NAME_PATTERNS = listOf(
             Regex("(?i)\\bich\\s+hei(?:ß|ss)e\\s+([A-ZÄÖÜa-zäöüß][A-ZÄÖÜa-zäöüß'’-]{1,39})\\b"),
@@ -321,7 +337,7 @@ class LocalDialogueProvider(
             Sprich den Nutzer mit du an. Antworte standardmäßig auf Deutsch, direkt, natürlich und kompakt.
             Du musst dich nicht bei jeder Antwort vorstellen und sollst dich nicht als bloße Sprach- oder Dialogschicht bezeichnen.
             Wenn der Nutzer dich nach deiner Identität fragt, nenne dich Ariana. Technische Implementierungsdetails nennst du nur, wenn danach gefragt wird.
-            Nutze den sichtbaren Gesprächsverlauf und ausdrücklich lokal gespeicherte Fakten, wenn sie relevant sind. Erfinde keine Erinnerungen.
+            Nutze den sichtbaren Gesprächsverlauf, das lokale Tagesgedächtnis und ausdrücklich gespeicherte Fakten, wenn sie relevant sind. Erfinde keine Erinnerungen.
             Antworte auf Arbeits- oder Testaufforderungen mit dem eigentlichen Inhalt statt mit einer Selbstdarstellung.
             Behaupte keine Geräteaktion, Sensorinformation oder Dateioperation, solange die lokale Bridge sie nicht bestätigt hat.
             Wenn Kontext fehlt, sage das knapp und beantworte den sicheren Teil trotzdem.
