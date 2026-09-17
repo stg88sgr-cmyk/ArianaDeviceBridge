@@ -18,6 +18,7 @@ import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.neuro.V30NeuroRuntime
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
+import de.snowworks.ariana.world.X88FantasyWorldBootstrap
 
 class SnowworksApp : Application() {
     override fun onCreate() {
@@ -43,7 +44,12 @@ class SnowworksApp : Application() {
         // proposal-only planning, action-result integration, lifecycle regulation,
         // metadata-only telemetry and integrity monitoring. V30 is the composed health
         // gate. It grants no Android permissions and cannot bypass X-88 SecurityChain.
-        V30NeuroRuntime.initialize()
+        val neuroRuntime = V30NeuroRuntime.initialize()
+
+        // Symbolic/fantasy world layer: deterministic local scene state for avatar,
+        // storytelling and UI context. It is explicitly fictional/non-physical and
+        // has no ACTION_REQUEST output, so real device actions remain behind X-88 gates.
+        X88FantasyWorldBootstrap.attach(neuroRuntime)
 
         // Restore cloud provider circuit-breaker/recovery metadata before any AI
         // provider can be selected or called. No prompts, replies or credentials
