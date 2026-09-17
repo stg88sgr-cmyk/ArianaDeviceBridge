@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "actions": [
+    {"type": "get_device_status", "level": "SAFE"},
+    {"type": "get_permission_status", "level": "SAFE"},
+    {"type": "notification_list", "level": "SAFE"},
+    {"type": "camera_stop", "level": "SAFE"},
+    {"type": "microphone_stop", "level": "SAFE"},
+    {"type": "open_app", "level": "CONFIRM"},
+    {"type": "open_url", "level": "CONFIRM"},
+    {"type": "camera_start", "level": "CONFIRM"},
+    {"type": "microphone_start", "level": "CONFIRM"},
+    {"type": "start_screen_share", "level": "CONFIRM"},
+    {"type": "take_screenshot", "level": "CONFIRM"}
+  ],
+  "default": "BLOCKED"
+}
