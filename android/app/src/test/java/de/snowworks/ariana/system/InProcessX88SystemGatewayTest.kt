@@ -1,5 +1,6 @@
 package de.snowworks.ariana.system
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,5 +44,30 @@ class InProcessX88SystemGatewayTest {
         assertFalse(gateway.submit(command).accepted)
         gateway.clearEmergencyStop()
         assertTrue(gateway.submit(command).accepted)
+    }
+
+    @Test
+    fun auditCapturesRejectedAndAcceptedCommandsInOrder() {
+        val gateway = InProcessX88SystemGateway()
+        val session = gateway.startSession()
+        val command = X88Command(
+            id = "cmd-audit",
+            capability = X88Capability.APP_CONTROL,
+            sessionId = session,
+            action = "open_app",
+        )
+
+        gateway.submit(command)
+        gateway.setMasterEnabled(true)
+        gateway.enable(X88Capability.APP_CONTROL)
+        gateway.submit(command.copy(id = "cmd-audit-2"))
+
+        val audit = gateway.auditSnapshot()
+        assertEquals(2, audit.size)
+        assertFalse(audit[0].accepted)
+        assertEquals("X88_GATE_REJECTED", audit[0].resultCode)
+        assertTrue(audit[1].accepted)
+        assertEquals("X88_ACCEPTED", audit[1].resultCode)
+        assertTrue(audit[0].sequence < audit[1].sequence)
     }
 }
