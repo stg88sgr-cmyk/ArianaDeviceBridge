@@ -420,10 +420,18 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             .setNegativeButton("Abbrechen") { _, _ -> resumeWakewordIfIdle() }
             .setOnCancelListener { resumeWakewordIfIdle() }
             .setPositiveButton("Einschalten") { _, _ ->
-                api.setMasterEnabled(true)
-                X88EventJournal.add("master_on", "confirmed")
-                avatar.mode = X88AvatarView.Mode.IDLE
-                showReply("Lokaler Gerätezugriff aktiviert.", true)
+                when (val result = api.setMasterEnabled(true)) {
+                    is ArianaResult.Ok -> {
+                        X88EventJournal.add("master_on", "confirmed")
+                        avatar.mode = X88AvatarView.Mode.IDLE
+                        showReply("Lokaler Gerätezugriff aktiviert.", true)
+                    }
+                    is ArianaResult.Err -> {
+                        X88EventJournal.add("master_on_rejected", "security")
+                        avatar.mode = X88AvatarView.Mode.ATTENTION
+                        showReply(result.error.message, true)
+                    }
+                }
                 refreshStatus()
             }
             .show()

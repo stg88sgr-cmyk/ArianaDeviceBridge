@@ -33,6 +33,8 @@ import de.snowworks.app.ui.DeviceGrantsActivity
 import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.Feature
 import de.snowworks.ariana.camera.CameraFrameStore
+import de.snowworks.ariana.system.X88FeatureGate
+import de.snowworks.ariana.system.X88Runtime
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -100,6 +102,13 @@ class ArianaCaptureService : Service() {
             else -> null
         }
         if (startingFeature != null) {
+            val featureGate = X88FeatureGate(X88Runtime.gateway(this))
+            if (!featureGate.isAuthorized(startingFeature)) {
+                SessionRegistry.markActive(startingFeature, false)
+                refreshForegroundOrStop()
+                return START_NOT_STICKY
+            }
+
             pendingCapture.add(startingFeature)
             // Android 14+ requires the matching foreground-service type before
             // sensitive capture resources (especially MediaProjection) open.

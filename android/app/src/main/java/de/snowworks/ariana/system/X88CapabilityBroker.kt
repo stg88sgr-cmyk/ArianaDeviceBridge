@@ -1,45 +1,62 @@
 package de.snowworks.ariana.system
 
+import kotlinx.coroutines.flow.StateFlow
+
 class X88CapabilityBroker(
     initialState: X88CoreState = X88CoreState(),
+    private val holder: ArianaStateHolder = ArianaStateHolder(initialState),
 ) {
-    @Volatile
-    private var state: X88CoreState = initialState
+    val state: StateFlow<X88CoreState> = holder.state
 
     @Synchronized
-    fun setMasterEnabled(enabled: Boolean): X88CoreState {
-        state = state.copy(masterEnabled = enabled)
-        return state
-    }
+    fun setMasterEnabled(enabled: Boolean): X88CoreState =
+        holder.setMasterEnabled(enabled)
 
     @Synchronized
-    fun enable(capability: X88Capability): X88CoreState {
-        state = state.copy(enabledCapabilities = state.enabledCapabilities + capability)
-        return state
-    }
+    fun enable(capability: X88Capability): X88CoreState =
+        holder.update { current ->
+            current.copy(
+                enabledCapabilities = current.enabledCapabilities + capability,
+                lastTransition = "CAPABILITY_ENABLED:${capability.name}",
+            )
+        }
 
     @Synchronized
-    fun disable(capability: X88Capability): X88CoreState {
-        state = state.copy(enabledCapabilities = state.enabledCapabilities - capability)
-        return state
-    }
+    fun disable(capability: X88Capability): X88CoreState =
+        holder.update { current ->
+            current.copy(
+                enabledCapabilities = current.enabledCapabilities - capability,
+                lastTransition = "CAPABILITY_DISABLED:${capability.name}",
+            )
+        }
 
     @Synchronized
-    fun attachSession(sessionId: String?): X88CoreState {
-        state = state.copy(activeSessionId = sessionId)
-        return state
-    }
+    fun attachSession(sessionId: String?): X88CoreState =
+        holder.update { current ->
+            current.copy(
+                activeSessionId = sessionId,
+                lastTransition = if (sessionId == null) "SESSION_DETACHED" else "SESSION_ATTACHED",
+            )
+        }
 
     @Synchronized
-    fun setEmergencyStop(active: Boolean): X88CoreState {
-        state = state.copy(emergencyStopActive = active)
-        return state
-    }
+    fun setEmergencyStop(active: Boolean): X88CoreState =
+        holder.setEmergencyStop(active)
 
-    fun snapshot(): X88CoreState = state
+    @Synchronized
+    fun enterQuarantine(reason: String): X88CoreState =
+        holder.enterQuarantine(reason)
+
+    @Synchronized
+    fun clearQuarantine(): X88CoreState =
+        holder.clearQuarantine()
+
+    @Synchronized
+    fun updateSecurity(transform: (SecurityGateState) -> SecurityGateState): X88CoreState =
+        holder.updateSecurity(transform)
+
+    fun snapshot(): X88CoreState = holder.snapshot()
 
     fun canExecute(capability: X88Capability, sessionId: String?): Boolean =
-        state.activeSessionId != null &&
-            state.activeSessionId == sessionId &&
-            state.canExecute(capability)
+        holder.canExecute(capability, sessionId)
 }

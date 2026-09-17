@@ -7,9 +7,11 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
 import de.snowworks.app.widget.ArianaWakewordService
-import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.bridge.LocalBridgeServer
+import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.system.X88FeatureGate
+import de.snowworks.ariana.system.X88Runtime
 
 /**
  * Internal interface for permission status, start/stop, master, and errors.
@@ -18,6 +20,7 @@ import de.snowworks.ariana.session.SessionRegistry
 class ArianaDeviceApi(private val context: Context) {
     private val gate = ArianaGate(context)
     private val permissions = PermissionStore(context)
+    private val featureGate = X88FeatureGate(X88Runtime.gateway(context.applicationContext))
 
     fun getConnection(): ConnectionState = if (LocalBridgeServer.isRunning()) {
         ConnectionState(
@@ -38,7 +41,17 @@ class ArianaDeviceApi(private val context: Context) {
             stopAllSessions()
             LocalBridgeServer.stop()
         }
-        gate.setMasterEnabled(enabled)
+
+        val applied = gate.setMasterEnabled(enabled)
+        if (!applied) {
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.BLOCKED,
+                    "Der X-88 Master-Schalter konnte wegen eines aktiven Sicherheitszustands nicht aktiviert werden.",
+                ),
+            )
+        }
+
         if (enabled) LocalBridgeServer.start(context)
         return ArianaResult.Ok(Unit)
     }
@@ -87,16 +100,27 @@ class ArianaDeviceApi(private val context: Context) {
     fun start(activity: Activity, feature: Feature, projectionData: Intent? = null): ArianaResult<Unit> {
         val allowed = canUse(feature)
         if (allowed is ArianaResult.Err) return allowed
+
+        if (feature == Feature.SCREEN && projectionData == null) {
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.ABORTED,
+                    "Bildschirmübertragung braucht die Systembestätigung.",
+                ),
+            )
+        }
+
+        if (!featureGate.authorizeForExplicitStart(feature)) {
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.BLOCKED,
+                    "${feature.title} wurde vom X-88 Capability-Gate blockiert.",
+                ),
+            )
+        }
+
         return when (feature) {
             Feature.CAMERA, Feature.MICROPHONE, Feature.SCREEN -> {
-                if (feature == Feature.SCREEN && projectionData == null) {
-                    return ArianaResult.Err(
-                        ArianaError(
-                            ArianaError.Code.ABORTED,
-                            "Bildschirmübertragung braucht die Systembestätigung.",
-                        ),
-                    )
-                }
                 if (feature == Feature.SCREEN && projectionData != null) {
                     val resultCode = projectionData.getIntExtra("resultCode", Activity.RESULT_OK)
                     ArianaCaptureService.startWithProjection(activity, resultCode, projectionData)

@@ -1,5 +1,7 @@
 package de.snowworks.ariana.system
 
+import kotlinx.coroutines.flow.StateFlow
+
 class InProcessX88SystemGateway(
     private val core: X88Core = X88Core(),
     private val executor: (X88Command) -> X88CommandResult = { command ->
@@ -9,6 +11,8 @@ class InProcessX88SystemGateway(
 ) : X88SystemGateway {
 
     override fun state(): X88CoreState = core.capabilities.snapshot()
+
+    override fun observeState(): StateFlow<X88CoreState> = core.capabilities.state
 
     override fun startSession(): String = core.startSession()
 
