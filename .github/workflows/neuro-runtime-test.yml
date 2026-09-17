@@ -1,4 +1,4 @@
-name: V16-V30 Neuro Runtime Gate
+name: V16-V31 Neuro Runtime Gate
 
 on:
   push:
@@ -71,17 +71,19 @@ jobs:
           unzip -q /tmp/gradle.zip -d "$HOME"
           echo "$HOME/gradle-8.11.1/bin" >> "$GITHUB_PATH"
 
-      - name: Verify V16-V30 stage continuity in source
+      - name: Verify V16-V31 stage continuity in source
         shell: bash
         run: |
           set -euo pipefail
           base='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntime.kt'
           advanced='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntimeV21V30.kt'
+          observability='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntimeV31.kt'
           world='android/app/src/main/java/de/snowworks/ariana/world/X88FantasyWorldEngine.kt'
           bootstrap='android/app/src/main/java/de/snowworks/ariana/world/X88FantasyWorldBootstrap.kt'
           hud='android/app/src/main/java/de/snowworks/app/ui/HomeAiEngineIndicator.kt'
           test -f "$base"
           test -f "$advanced"
+          test -f "$observability"
           test -f "$world"
           test -f "$bootstrap"
           test -f "$hud"
@@ -91,13 +93,17 @@ jobs:
           for version in $(seq 21 30); do
             grep -Eq "V${version}[A-Za-z0-9_]+" "$advanced"
           done
+          grep -Eq 'class V31NeuroRuntime|data class V31RuntimeSnapshot' "$observability"
+          grep -F 'runtime-observability-gate' "$observability"
           grep -F 'requiresSecurityChain", "true"' "$advanced"
           grep -F 'executionMode", "proposal_only"' "$advanced"
           grep -F 'physicalEffect" to "false"' "$world"
+          grep -F 'V31NeuroRuntime.initialize()' 'android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
           grep -F 'X88FantasyWorldBootstrap.attach' 'android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
+          grep -F 'V31NeuroRuntime.currentOrNull()?.snapshot()' "$hud"
           grep -F 'X88FantasyWorldBootstrap.currentOrNull()' "$hud"
 
-      - name: Run V16-V30 and fantasy-world tests
+      - name: Run V16-V31 and fantasy-world tests
         working-directory: android
         shell: bash
         run: |
@@ -105,5 +111,6 @@ jobs:
           gradle :app:testDebugUnitTest \
             --tests 'de.snowworks.ariana.neuro.V16ToV20NeuroRuntimeTest' \
             --tests 'de.snowworks.ariana.neuro.V21ToV30NeuroRuntimeTest' \
+            --tests 'de.snowworks.ariana.neuro.V31NeuroRuntimeTest' \
             --tests 'de.snowworks.ariana.world.X88FantasyWorldEngineTest' \
             --stacktrace
