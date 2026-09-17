@@ -1,0 +1,29 @@
+{
+  "id": "x88.core-unconventional.v1",
+  "name": "X-88 Core Unconventional Pack",
+  "version": "1.0.0",
+  "requires": {
+    "platform": "android-termux",
+    "bridge": "127.0.0.1:8765"
+  },
+  "install_root": "~/.ariana/packs/x88.core-unconventional.v1",
+  "capabilities": [
+    "loopback-bridge",
+    "action-registry",
+    "provider-adapters",
+    "studio-presets",
+    "rollback-snapshots",
+    "health-checks"
+  ],
+  "policy": {
+    "network": "loopback-only-by-default",
+    "token_required": true,
+    "fail_closed": true,
+    "irreversible_actions_require_confirmation": true,
+    "platform_confirmations_remain_required": true
+  },
+  "modules": [
+    "modules/action-registry.json",
+    "modules/studio-presets.json"
+  ]
+}
