@@ -55,6 +55,7 @@ jobs:
           grep -F 'compileSdk = 36' android/app/build.gradle.kts
           grep -F 'targetSdk = 36' android/app/build.gradle.kts
           grep -F 'distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+          test -s android/signing-certificate.sha256
 
       - name: Ensure Android 16 SDK
         shell: bash
@@ -129,10 +130,20 @@ jobs:
         run: |
           set -euo pipefail
           APK="$(find android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          CERT_REPORT="android/app/build/outputs/apk/debug/signing-certificate.txt"
           APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee android/app/build/outputs/apk/debug/signing-certificate.txt
-          echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a android/app/build/outputs/apk/debug/signing-certificate.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee "$CERT_REPORT"
+          echo "Signing mode: ${ARIANA_STABLE_SIGNING:-unknown}" | tee -a "$CERT_REPORT"
+
+          if [[ "${ARIANA_STABLE_SIGNING:-disabled}" == "enabled" ]]; then
+            EXPECTED_CERT="$(tr -d '[:space:]' < android/signing-certificate.sha256)"
+            test -n "$EXPECTED_CERT"
+            grep -F "Signer #1 certificate SHA-256 digest: $EXPECTED_CERT" "$CERT_REPORT"
+            echo "Certificate continuity: PASS" | tee -a "$CERT_REPORT"
+          else
+            echo "Certificate continuity: SKIPPED (stable signing disabled)" | tee -a "$CERT_REPORT"
+          fi
 
       - name: SHA-256 APK
         shell: bash
