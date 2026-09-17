@@ -40,14 +40,16 @@ chmod 700 "$BOOT_DIR/x88-autostart.sh"
 ENV_FILE="$ARIANA_HOME/x88-runtime.env"
 if [ ! -e "$ENV_FILE" ]; then
   cat > "$ENV_FILE" <<'ENV'
-# Optional runtime command overrides.
-# Example:
-# X88_BRIDGE_CMD='exec "$HOME/bin/x88-real-bridge.sh"'
-# LUNA_XXY_WORKER_CMD='exec "$HOME/bin/luna-xxy-real-worker.sh"'
+# Canonical ownership: Android LocalBridgeServer owns 127.0.0.1:8765.
+# Termux/tmux is the execution plane and must not bind a second listener there.
 X88_BRIDGE_HOST=127.0.0.1
 X88_BRIDGE_PORT=8765
+X88_BRIDGE_OWNER=android
 X88_ADAPTER_TIMEOUT=15
 X88_ADAPTER_MAX_BYTES=4096
+
+# Optional non-listening worker overrides.
+# LUNA_XXY_WORKER_CMD='exec "$HOME/bin/luna-xxy-real-worker.sh"'
 ENV
   chmod 600 "$ENV_FILE"
 fi
