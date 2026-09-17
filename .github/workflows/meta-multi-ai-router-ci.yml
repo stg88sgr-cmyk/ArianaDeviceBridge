@@ -87,8 +87,8 @@ jobs:
           grep -F 'fun testConfigured(context: Context): ProbeResult' "$manager"
           grep -F 'Connectivity smoke test for Ariana X-88' "$manager"
 
-          grep -F 'Gespeicherte Meta-Verbindung testen' "$settings"
-          grep -F 'testConfiguredProvider()' "$settings"
+          grep -F 'text = "Meta testen"' "$settings"
+          grep -F 'private fun testMeta()' "$settings"
           grep -F 'https://api.meta.ai/v1/chat/completions' "$settings"
           grep -F 'muse-spark-1.3' "$settings"
           grep -F '"/repair"' "$dialogue"
