@@ -74,6 +74,11 @@
         </receiver>
 
         <service
+            android:name="de.snowworks.ariana.system.X88CoreService"
+            android:exported="false"
+            android:stopWithTask="false" />
+
+        <service
             android:name=".widget.ArianaWakewordService"
             android:exported="false"
             android:foregroundServiceType="microphone"
