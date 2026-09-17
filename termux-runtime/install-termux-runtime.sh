@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -Eeuo pipefail
 
-SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 BIN_DIR="${X88_BIN:-$HOME/bin}"
 BOOT_DIR="$HOME/.termux/boot"
 ARIANA_HOME="${X88_HOME:-$HOME/.ariana}"
