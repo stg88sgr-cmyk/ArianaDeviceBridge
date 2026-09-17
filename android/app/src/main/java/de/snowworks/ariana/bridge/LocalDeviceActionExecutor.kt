@@ -5,6 +5,10 @@ import android.content.Intent
 import android.provider.Settings
 import de.snowworks.ariana.apk.ApkInstaller
 import de.snowworks.ariana.apk.ApkManager
+import de.snowworks.ariana.neuro.NeuroChannel
+import de.snowworks.ariana.neuro.NeuroSignal
+import de.snowworks.ariana.neuro.V30NeuroRuntime
+import kotlinx.coroutines.CancellationException
 
 /**
  * Executes the small, explicit set of local device actions.
@@ -177,7 +181,7 @@ object LocalDeviceActionExecutor {
             },
         )
 
-        return X88ResultTransmuter(
+        val result = X88ResultTransmuter(
             chain = chain,
             timeoutMs = timeoutMs,
         ).execute(
@@ -188,6 +192,29 @@ object LocalDeviceActionExecutor {
                 approvalGrantId = grantId,
             ),
         )
+
+        // Feed only metadata back into the V30 neuro runtime. User content,
+        // payload values and result messages are intentionally not copied.
+        try {
+            V30NeuroRuntime.currentOrNull()?.emit(
+                NeuroSignal(
+                    channel = NeuroChannel.ACTION_RESULT,
+                    source = "local-device-action-executor",
+                    payload = mapOf(
+                        "actionId" to result.actionId,
+                        "ok" to result.ok.toString(),
+                        "status" to result.status.name,
+                        "code" to result.code,
+                    ),
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            // Runtime feedback must never rewrite or mask the canonical action result.
+        }
+
+        return result
     }
 
     /** Called only after all SecurityChain gates have passed. */
