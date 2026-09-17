@@ -14,6 +14,7 @@ class X88FeatureGate(
     private val gateway: X88SystemGateway,
 ) {
     fun authorizeForExplicitStart(feature: Feature): Boolean {
+        val capability = feature.toX88Capability()
         val before = gateway.state()
         if (!before.masterEnabled ||
             before.emergencyStopActive ||
@@ -23,9 +24,14 @@ class X88FeatureGate(
             return false
         }
 
-        val capability = feature.toX88Capability()
+        val alreadyEnabled = capability in before.enabledCapabilities
         gateway.enable(capability)
-        return gateway.state().canExecute(capability)
+        if (gateway.state().canExecute(capability)) return true
+
+        // If policy changed between pre-check and grant, do not leave a new
+        // persistent capability behind. Preserve a grant that existed before.
+        if (!alreadyEnabled) gateway.disable(capability)
+        return false
     }
 
     fun isAuthorized(feature: Feature): Boolean {
