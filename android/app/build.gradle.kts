@@ -16,14 +16,14 @@ val arianaStableDebugSigningAvailable = listOf(
 
 android {
     namespace = "de.snowworks.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "de.snowworks.app"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 46
-        versionName = "1.14.6-rc1"
+        targetSdk = 36
+        versionCode = 47
+        versionName = "1.15.0-rc1"
     }
 
     signingConfigs {
