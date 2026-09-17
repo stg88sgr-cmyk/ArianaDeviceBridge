@@ -27,7 +27,7 @@ class InProcessX88SystemGatewayTest {
     }
 
     @Test
-    fun emergencyStopBlocksPreviouslyAllowedCommand() {
+    fun emergencyStopBlocksUntilExplicitMasterReenable() {
         val gateway = InProcessX88SystemGateway()
         val session = gateway.startSession()
         gateway.setMasterEnabled(true)
@@ -40,9 +40,14 @@ class InProcessX88SystemGatewayTest {
         )
 
         assertTrue(gateway.submit(command).accepted)
+
         gateway.emergencyStop()
         assertFalse(gateway.submit(command).accepted)
+
         gateway.clearEmergencyStop()
+        assertFalse(gateway.submit(command).accepted)
+
+        gateway.setMasterEnabled(true)
         assertTrue(gateway.submit(command).accepted)
     }
 
