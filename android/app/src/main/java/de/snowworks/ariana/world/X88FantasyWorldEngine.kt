@@ -65,7 +65,7 @@ class X88FantasyWorldEngine : NeuroModule {
         var lastActionOk: Boolean? = null,
     )
 
-    private val inputs = Inputs()
+    private val worldInputs = Inputs()
 
     @Volatile
     private var state: State = State()
@@ -73,20 +73,21 @@ class X88FantasyWorldEngine : NeuroModule {
     fun currentState(): State = state
 
     override suspend fun onSignal(signal: NeuroSignal): List<NeuroSignal> {
-        val next = synchronized(inputs) {
+        val next = synchronized(worldInputs) {
             when (signal.channel) {
                 NeuroChannel.EMOTION_STATE -> {
-                    inputs.valence = signal.payload.double("valence", inputs.valence).coerceIn(-1.0, 1.0)
-                    inputs.arousal = signal.payload.double("arousal", inputs.arousal).coerceIn(0.0, 1.0)
-                    inputs.curiosity = signal.payload.double("curiosity", inputs.curiosity).coerceIn(0.0, 1.0)
-                    inputs.trust = signal.payload.double("trust", inputs.trust).coerceIn(0.0, 1.0)
-                    inputs.tension = signal.payload.double("tension", inputs.tension).coerceIn(0.0, 1.0)
+                    worldInputs.valence = signal.payload.double("valence", worldInputs.valence).coerceIn(-1.0, 1.0)
+                    worldInputs.arousal = signal.payload.double("arousal", worldInputs.arousal).coerceIn(0.0, 1.0)
+                    worldInputs.curiosity = signal.payload.double("curiosity", worldInputs.curiosity).coerceIn(0.0, 1.0)
+                    worldInputs.trust = signal.payload.double("trust", worldInputs.trust).coerceIn(0.0, 1.0)
+                    worldInputs.tension = signal.payload.double("tension", worldInputs.tension).coerceIn(0.0, 1.0)
                 }
                 NeuroChannel.EXPRESSION -> {
-                    inputs.expression = signal.payload["mode"]?.take(32)?.ifBlank { "calm" } ?: inputs.expression
+                    worldInputs.expression = signal.payload["mode"]?.take(32)?.ifBlank { "calm" }
+                        ?: worldInputs.expression
                 }
                 NeuroChannel.ACTION_RESULT -> {
-                    inputs.lastActionOk = signal.payload["ok"]?.toBooleanStrictOrNull()
+                    worldInputs.lastActionOk = signal.payload["ok"]?.toBooleanStrictOrNull()
                 }
                 else -> Unit
             }
@@ -132,10 +133,10 @@ class X88FantasyWorldEngine : NeuroModule {
 
     private fun deriveState(revision: Long): State {
         val realm = when {
-            inputs.tension >= 0.65 -> Realm.VOID_OBSERVATORY
-            inputs.curiosity >= 0.72 -> Realm.CYAN_GARDEN
-            inputs.valence >= 0.35 && inputs.arousal >= 0.55 -> Realm.GOLDEN_SANCTUM
-            inputs.valence <= -0.30 -> Realm.MAGENTA_ARCHIVE
+            worldInputs.tension >= 0.65 -> Realm.VOID_OBSERVATORY
+            worldInputs.curiosity >= 0.72 -> Realm.CYAN_GARDEN
+            worldInputs.valence >= 0.35 && worldInputs.arousal >= 0.55 -> Realm.GOLDEN_SANCTUM
+            worldInputs.valence <= -0.30 -> Realm.MAGENTA_ARCHIVE
             else -> Realm.NEXUS_CORE
         }
 
@@ -156,24 +157,24 @@ class X88FantasyWorldEngine : NeuroModule {
         }
 
         val lightPhase = when {
-            inputs.arousal >= 0.72 -> "pulse"
-            inputs.arousal <= 0.28 -> "still"
+            worldInputs.arousal >= 0.72 -> "pulse"
+            worldInputs.arousal <= 0.28 -> "still"
             else -> "balanced"
         }
 
         val coherence = clamp3(
-            ((inputs.valence + 1.0) / 2.0) * 0.25 +
-                inputs.trust * 0.35 +
-                (1.0 - inputs.tension) * 0.40,
+            ((worldInputs.valence + 1.0) / 2.0) * 0.25 +
+                worldInputs.trust * 0.35 +
+                (1.0 - worldInputs.tension) * 0.40,
         )
         val resonance = clamp3(
-            inputs.curiosity * 0.35 +
-                ((inputs.valence + 1.0) / 2.0) * 0.20 +
-                inputs.trust * 0.25 +
-                (1.0 - inputs.tension) * 0.20,
+            worldInputs.curiosity * 0.35 +
+                ((worldInputs.valence + 1.0) / 2.0) * 0.20 +
+                worldInputs.trust * 0.25 +
+                (1.0 - worldInputs.tension) * 0.20,
         )
 
-        val actionSuffix = when (inputs.lastActionOk) {
+        val actionSuffix = when (worldInputs.lastActionOk) {
             true -> "_settled"
             false -> "_recovering"
             null -> ""
@@ -184,7 +185,7 @@ class X88FantasyWorldEngine : NeuroModule {
             pattern = pattern,
             atmosphere = atmosphere + actionSuffix,
             lightPhase = lightPhase,
-            avatarMood = inputs.expression,
+            avatarMood = worldInputs.expression,
             coherence = coherence,
             resonanceIndex = resonance,
             revision = revision,
