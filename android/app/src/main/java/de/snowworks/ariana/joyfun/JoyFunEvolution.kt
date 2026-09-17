@@ -144,7 +144,7 @@ class JoyFunEvolution(
     private fun baseline(source: JoyFunState): JoyFunEvolutionState {
         val bounded = source.copy(
             joy = source.joy.coerce01(),
-            fun = source.fun.coerce01(),
+            funLevel = source.funLevel.coerce01(),
             playfulness = source.playfulness.coerce01(),
             curiosity = source.curiosity.coerce01(),
             energy = source.energy.coerce01(),
@@ -212,7 +212,7 @@ class JoyFunEvolution(
 
     private fun bounded(core: JoyFunState): JoyFunState = core.copy(
         joy = core.joy.coerce01(),
-        fun = core.fun.coerce01(),
+        funLevel = core.funLevel.coerce01(),
         playfulness = core.playfulness.coerce01(),
         curiosity = core.curiosity.coerce01(),
         energy = core.energy.coerce01(),
@@ -223,7 +223,14 @@ class JoyFunEvolution(
         (1f - abs(core.energy - 0.5f) * 0.7f).coerce01()
 
     private fun coherence(core: JoyFunState): Float {
-        val values = listOf(core.joy, core.fun, core.playfulness, core.curiosity, core.energy, core.socialWarmth)
+        val values = listOf(
+            core.joy,
+            core.funLevel,
+            core.playfulness,
+            core.curiosity,
+            core.energy,
+            core.socialWarmth,
+        )
         val mean = values.average().toFloat()
         val deviation = values.map { abs(it - mean) }.average().toFloat()
         return (1f - deviation * 1.8f).coerce01()
@@ -233,7 +240,7 @@ class JoyFunEvolution(
         (state.core.socialWarmth * 0.65f + state.coherence * 0.35f).coerce01()
 
     private fun creativity(core: JoyFunState): Float =
-        (core.curiosity * 0.45f + core.playfulness * 0.35f + core.fun * 0.20f).coerce01()
+        (core.curiosity * 0.45f + core.playfulness * 0.35f + core.funLevel * 0.20f).coerce01()
 
     private fun focus(state: JoyFunEvolutionState): Float =
         (state.coherence * 0.55f + state.core.energy * 0.30f + (1f - state.core.playfulness) * 0.15f).coerce01()
@@ -252,7 +259,7 @@ class JoyFunEvolution(
             state.focus * 0.15f).coerce01()
 
     private fun transmutation(state: JoyFunEvolutionState): TransmutationVector = TransmutationVector(
-        light = (state.core.joy * 0.6f + state.core.fun * 0.4f).coerce01(),
+        light = (state.core.joy * 0.6f + state.core.funLevel * 0.4f).coerce01(),
         contrast = (1f - state.coherence).coerce01(),
         warmth = state.core.socialWarmth.coerce01(),
         trust = state.trust,
