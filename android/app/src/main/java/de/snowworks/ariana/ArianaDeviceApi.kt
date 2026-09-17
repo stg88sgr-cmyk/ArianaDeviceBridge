@@ -13,6 +13,7 @@ import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.xspace.XSpaceApprovalActivity
 import de.snowworks.ariana.xspace.XSpaceApprovalRequestStore
 import de.snowworks.ariana.xspace.XSpaceBridgeActionRouter
+import de.snowworks.ariana.xspace.XSpaceBridgeSelfTest
 import de.snowworks.ariana.xspace.XSpaceConfirmedActionExecutor
 import de.snowworks.ariana.xspace.XSpaceGatewayClient
 import org.json.JSONObject
@@ -168,6 +169,10 @@ class ArianaDeviceApi(private val context: Context) {
     /** Call only from the visible deny/cancel button. */
     fun denyXSpaceAction(proposalId: String): JSONObject =
         XSpaceConfirmedActionExecutor.deny(proposalId)
+
+    /** Side-effect-free verification of the real LocalBridge → XSpace approval path. */
+    fun runXSpaceSelfTest(): XSpaceBridgeSelfTest.Result =
+        XSpaceBridgeSelfTest.run(context.applicationContext)
 
     fun createScreenCaptureIntent(): Intent {
         val mgr = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
