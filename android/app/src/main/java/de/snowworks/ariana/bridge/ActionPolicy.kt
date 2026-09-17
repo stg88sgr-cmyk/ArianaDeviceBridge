@@ -6,9 +6,9 @@ import de.snowworks.ariana.ArianaGate
 /**
  * Classifies proposed device actions without executing them.
  *
- * Authority is derived from ActionDescriptorRegistry. Callers cannot choose
- * confirmation level or capabilities. CONFIRM decisions are registered in the
- * volatile local approval store so the user can review them on-device.
+ * Proposal evaluation may create a volatile pending confirmation so local UI can
+ * review it. Execution evaluation is side-effect free: confirmation is handled
+ * later by the canonical ConfirmationGate.
  */
 object ActionPolicy {
     enum class Decision { SAFE, CONFIRM, BLOCKED }
@@ -23,7 +23,22 @@ object ActionPolicy {
 
     private val actionPattern = Regex("^[a-z][a-z0-9_]{0,79}$")
 
-    fun evaluate(context: Context, rawAction: String): Evaluation {
+    /** Proposal path used by the visible human-in-the-loop UI. */
+    fun evaluate(context: Context, rawAction: String): Evaluation =
+        evaluateInternal(context, rawAction, createPendingProposal = true)
+
+    /**
+     * Execution path used by SecurityChain. It never creates a proposal itself,
+     * keeping the canonical order Policy -> Permission -> Confirmation intact.
+     */
+    fun evaluateForExecution(context: Context, rawAction: String): Evaluation =
+        evaluateInternal(context, rawAction, createPendingProposal = false)
+
+    private fun evaluateInternal(
+        context: Context,
+        rawAction: String,
+        createPendingProposal: Boolean,
+    ): Evaluation {
         val action = rawAction.trim().lowercase()
         if (!actionPattern.matches(action)) {
             return Evaluation(
@@ -41,9 +56,7 @@ object ActionPolicy {
             )
 
         val gate = ArianaGate(context.applicationContext)
-        if ((!gate.isMasterEnabled || gate.isBlocked) &&
-            descriptor.confirmation != ConfirmationRequirement.SAFE
-        ) {
+        if ((!gate.isMasterEnabled || gate.isBlocked) && descriptor.confirmation != ConfirmationRequirement.SAFE) {
             return Evaluation(
                 action = action,
                 decision = Decision.BLOCKED,
@@ -60,12 +73,16 @@ object ActionPolicy {
 
             ConfirmationRequirement.CONFIRM -> {
                 val reason = "VISIBLE_USER_CONFIRMATION_REQUIRED"
-                val pending = ActionApprovalStore.createPending(action, reason)
+                val pending = if (createPendingProposal) {
+                    ActionApprovalStore.createPending(action, reason)
+                } else {
+                    null
+                }
                 Evaluation(
                     action = action,
                     decision = Decision.CONFIRM,
                     reason = reason,
-                    pendingProposalId = pending.id,
+                    pendingProposalId = pending?.id,
                 )
             }
         }
