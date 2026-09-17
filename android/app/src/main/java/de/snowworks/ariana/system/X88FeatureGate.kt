@@ -14,6 +14,15 @@ class X88FeatureGate(
     private val gateway: X88SystemGateway,
 ) {
     fun authorizeForExplicitStart(feature: Feature): Boolean {
+        val before = gateway.state()
+        if (!before.masterEnabled ||
+            before.emergencyStopActive ||
+            before.quarantineActive ||
+            before.security.gate12CircuitBreaker != GateStatus.GREEN
+        ) {
+            return false
+        }
+
         val capability = feature.toX88Capability()
         gateway.enable(capability)
         return gateway.state().canExecute(capability)
