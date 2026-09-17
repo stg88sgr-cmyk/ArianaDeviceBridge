@@ -18,6 +18,7 @@ run_tmux_job() {
   local output_file
   local rc_file
   local runner
+  local runner_shell
   local shell_command
   local polls
   local i
@@ -49,16 +50,22 @@ run_tmux_job() {
   output_file="$job_dir/$token.output"
   rc_file="$job_dir/$token.rc"
   runner="$X88_BIN/tmux-job-runner.sh"
+  runner_shell="${SHELL:-/data/data/com.termux/files/usr/bin/bash}"
 
   if [ ! -x "$runner" ]; then
     printf 'tmux job runner missing: %s\n' "$runner" >&2
+    return 69
+  fi
+  if [ ! -x "$runner_shell" ]; then
+    printf 'configured shell is not executable: %s\n' "$runner_shell" >&2
     return 69
   fi
 
   printf '%s\n' "$command" > "$command_file"
   chmod 600 "$command_file"
 
-  printf -v shell_command '%q %q %q %q' "$runner" "$command_file" "$output_file" "$rc_file"
+  printf -v shell_command '%q %q %q %q %q' \
+    "$runner_shell" "$runner" "$command_file" "$output_file" "$rc_file"
   if ! tmux new-window -d -t "$session:" -n "job-${token: -12}" "$shell_command"; then
     rm -f "$command_file" "$output_file" "$rc_file"
     printf 'failed to create tmux job window in %s\n' "$session" >&2
