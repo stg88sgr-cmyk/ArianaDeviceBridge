@@ -110,6 +110,9 @@ class X88GenesisCode(
         append("artifactSha256=${state.artifactSha256.orEmpty()}\n")
         append("ledgerHeadSha256=${state.ledgerHeadSha256.orEmpty()}\n")
         append("lastAttestationId=${state.lastAttestationId.orEmpty()}\n")
+        append("lastHealthCheckEpochMs=${state.lastHealthCheckEpochMs ?: -1}\n")
+        append("lastError=${state.lastError.orEmpty()}\n")
+        append("lastTransition=${state.lastTransition.orEmpty()}\n")
         append("capabilities=${capabilities.joinToString(",")}\n")
         gates.forEach { (name, value) -> append("gate.$name=$value\n") }
     }
@@ -117,7 +120,7 @@ class X88GenesisCode(
     private fun sha256(value: String): String = MessageDigest
         .getInstance("SHA-256")
         .digest(value.toByteArray(Charsets.UTF_8))
-        .joinToString(separator = "") { byte -> "%02x".format(byte) }
+        .joinToString(separator = "") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }
 
 private fun SecurityGateState.asStableMap(): Map<String, String> = linkedMapOf(
