@@ -44,17 +44,18 @@ class SnowworksApp : Application() {
         DialogueRouter.initialize(this)
         registerHomeAiIndicator()
 
-        // Restore only the local loopback core when the user-controlled master gate
+        // Restore only the local loopback control bridge when the user-controlled master gate
         // was already enabled and Stop-All has not blocked new actions.
         val gate = ArianaGate(this)
         if (gate.isMasterEnabled && !gate.isBlocked) {
             LocalBridgeServer.start(this)
         }
 
-        // Local-first boot. Remote providers are never selected as the active fallback
-        // while the outbound gate is disabled.
-        if (!LoopbackArianaProviderManager.activateIfAvailable() &&
-            !LocalAiProviderManager.activateConfigured(this) &&
+        // Stable local-first boot: prefer a real installed on-device model. If none is
+        // available, register the same-device Ariana core. Remote AI becomes an active
+        // fallback only when the explicit outbound gate has been enabled by the user.
+        if (!LocalAiProviderManager.activateConfigured(this) &&
+            !LoopbackArianaProviderManager.activateIfAvailable() &&
             CloudAccessGate.isEnabled()
         ) {
             AiProviderManager.activateConfigured(this)
