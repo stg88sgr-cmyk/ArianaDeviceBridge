@@ -27,7 +27,6 @@ import de.snowworks.ariana.bridge.DialogueSessionStore
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.camera.CameraFrameStore
 import de.snowworks.ariana.files.TreePermissionStore
-import de.snowworks.ariana.session.ArianaCaptureService
 
 class DeviceGrantsActivity : AppCompatActivity() {
 
@@ -47,13 +46,18 @@ class DeviceGrantsActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             val feature = pendingFeature
             pendingFeature = null
+            val data = result.data
             if (feature != Feature.SCREEN) return@registerForActivityResult
-            if (result.resultCode != RESULT_OK || result.data == null) {
+            if (result.resultCode != RESULT_OK || data == null) {
                 toast("Systemdialog abgebrochen. Bildschirmübertragung bleibt aus.")
                 refresh()
                 return@registerForActivityResult
             }
-            ArianaCaptureService.startWithProjection(this, result.resultCode, result.data!!)
+            data.putExtra("resultCode", result.resultCode)
+            when (val started = api.start(this, Feature.SCREEN, data)) {
+                is ArianaResult.Ok -> toast("Bildschirmübertragung gestartet.")
+                is ArianaResult.Err -> toast(started.error.message)
+            }
             refresh()
         }
 
@@ -120,16 +124,21 @@ class DeviceGrantsActivity : AppCompatActivity() {
         )
         masterSwitch = SwitchCompat(this).apply {
             isChecked = api.isMasterEnabled()
-            setOnCheckedChangeListener { _, on ->
-                api.setMasterEnabled(on)
-                if (!on) {
-                    DialogueSessionStore.revoke()
-                    ActionApprovalStore.revokeAll()
+            setOnCheckedChangeListener { view, on ->
+                if (!view.isPressed) return@setOnCheckedChangeListener
+                when (val changed = api.setMasterEnabled(on)) {
+                    is ArianaResult.Ok -> {
+                        if (!on) {
+                            DialogueSessionStore.revoke()
+                            ActionApprovalStore.revokeAll()
+                        }
+                        toast(
+                            if (on) "Zugriff ein. Keine Sitzung automatisch gestartet."
+                            else "Zugriff aus. Sitzungen und Aktionsfreigaben beendet.",
+                        )
+                    }
+                    is ArianaResult.Err -> toast(changed.error.message)
                 }
-                toast(
-                    if (on) "Zugriff ein. Keine Sitzung automatisch gestartet."
-                    else "Zugriff aus. Sitzungen und Aktionsfreigaben beendet.",
-                )
                 refresh()
             }
         }
