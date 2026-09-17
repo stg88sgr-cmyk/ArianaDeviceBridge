@@ -8,7 +8,7 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /**
- * Side-effect-free end-to-end verification for the X Space LocalBridge path.
+ * End-to-end verification for the X Space LocalBridge path without external X mutations.
  *
  * It verifies the real loopback HTTP route. The only CONFIRM action proposed is
  * xspace_speak; the proposal is inspected and then denied. It never approves a
@@ -46,13 +46,10 @@ object XSpaceBridgeSelfTest {
         val token = BridgeTokenStore(app).getOrCreate()
         val checks = mutableListOf<Check>()
 
-        // 1) SAFE route must be reachable through the actual /action endpoint.
         val statusResponse = runCatching {
             request(
                 token = token,
-                body = JSONObject()
-                    .put("action", "xspace_status")
-                    .toString(),
+                body = JSONObject().put("action", "xspace_status").toString(),
             )
         }.getOrElse { error ->
             checks += Check("/action → xspace_status", false, error.javaClass.simpleName)
@@ -73,7 +70,6 @@ object XSpaceBridgeSelfTest {
         )
         if (!statusHealthy) return finish(checks)
 
-        // 2) CONFIRM action must create a visible review proposal, never execute.
         val marker = "X88_SELFTEST_${System.currentTimeMillis()}"
         val speakResponse = runCatching {
             request(
@@ -119,20 +115,21 @@ object XSpaceBridgeSelfTest {
             )
 
             val denied = XSpaceConfirmedActionExecutor.deny(proposalId)
+            XSpaceApprovalNotifier.cancel(app, proposalId)
             val denyHealthy = denied.optBoolean("ok", false) &&
                 XSpaceApprovalRequestStore.get(proposalId) == null
             checks += Check(
                 name = "Proposal-Verwurf",
                 ok = denyHealthy,
                 detail = if (denyHealthy) {
-                    "Testvorschlag wurde verworfen und aus der flüchtigen Queue entfernt."
+                    "Testvorschlag und lokale Freigabe-Benachrichtigung wurden verworfen."
                 } else {
                     "Testvorschlag konnte nicht sauber verworfen werden."
                 },
             )
         } finally {
-            // Fail-closed cleanup in case a check above throws.
             XSpaceConfirmedActionExecutor.deny(proposalId)
+            XSpaceApprovalNotifier.cancel(app, proposalId)
         }
 
         return finish(checks)
