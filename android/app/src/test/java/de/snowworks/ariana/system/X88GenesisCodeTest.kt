@@ -61,9 +61,9 @@ class X88GenesisCodeTest {
 
     @Test
     fun gateMutationChangesGenesisDigest() {
-        val initial = X88CoreState()
-        val holder = ArianaStateHolder(initial)
-        val gateway = InProcessX88SystemGateway(holder = holder)
+        val holder = ArianaStateHolder(X88CoreState())
+        val broker = X88CapabilityBroker(holder = holder)
+        val gateway = InProcessX88SystemGateway(core = X88Core(capabilities = broker))
         val genesis = X88GenesisCode(gateway)
         val before = genesis.capture()
 
