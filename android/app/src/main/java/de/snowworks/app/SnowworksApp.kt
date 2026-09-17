@@ -15,7 +15,7 @@ import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
-import de.snowworks.ariana.neuro.V30NeuroRuntime
+import de.snowworks.ariana.neuro.V31NeuroRuntime
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 import de.snowworks.ariana.world.X88FantasyWorldBootstrap
@@ -39,17 +39,18 @@ class SnowworksApp : Application() {
         // and becomes the single home for task scheduling, telemetry and adaptive runtime work.
         ArianaUniversalRuntimeV2.initialize(this)
 
-        // V16-V30 neuro runtime is an internal local signal layer. V21-V29 extend the
+        // V16-V31 neuro runtime is an internal local signal layer. V21-V29 extend the
         // original fabric with attention, context, explicit intent stabilization,
         // proposal-only planning, action-result integration, lifecycle regulation,
         // metadata-only telemetry and integrity monitoring. V30 is the composed health
-        // gate. It grants no Android permissions and cannot bypass X-88 SecurityChain.
-        val neuroRuntime = V30NeuroRuntime.initialize()
+        // gate; V31 adds read-only observability for UI/diagnostics. Neither grants
+        // Android permissions or bypasses X-88 SecurityChain.
+        val neuroRuntime = V31NeuroRuntime.initialize()
 
-        // Symbolic/fantasy world layer: deterministic local scene state for avatar,
-        // storytelling and UI context. It is explicitly fictional/non-physical and
-        // has no ACTION_REQUEST output, so real device actions remain behind X-88 gates.
-        X88FantasyWorldBootstrap.attach(neuroRuntime)
+        // Symbolic/fantasy world layer remains attached to the underlying V30 fabric.
+        // It is explicitly fictional/non-physical and has no ACTION_REQUEST output,
+        // so real device actions remain behind X-88 gates.
+        X88FantasyWorldBootstrap.attach(neuroRuntime.base)
 
         // Restore cloud provider circuit-breaker/recovery metadata before any AI
         // provider can be selected or called. No prompts, replies or credentials
