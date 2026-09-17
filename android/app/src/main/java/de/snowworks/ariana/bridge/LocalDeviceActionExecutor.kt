@@ -7,12 +7,11 @@ import de.snowworks.ariana.apk.ApkInstaller
 import de.snowworks.ariana.apk.ApkManager
 
 /**
- * Executes the small, explicit set of local device actions that have already
- * passed ActionPolicy and a visible user confirmation.
+ * Executes the small, explicit set of local device actions.
  *
- * The exact approval grant is consumed immediately before execution. A grant
- * cannot be reused, cannot authorize a different action, and unsupported
- * actions are rejected before any grant is consumed.
+ * All supported actions now pass through the canonical SecurityChain before the
+ * dispatcher is reached. Unsupported actions are rejected before confirmation
+ * grants can be consumed.
  */
 object LocalDeviceActionExecutor {
     data class Result(
@@ -20,21 +19,96 @@ object LocalDeviceActionExecutor {
         val error: String? = null,
     )
 
-    fun execute(context: Context, grantId: String, action: String): Result {
-        if (action !in SUPPORTED_ACTIONS) {
+    /**
+     * Trusted in-process UI path. The user confirmation grant is still mandatory;
+     * only network token authentication is represented by a private local token.
+     */
+    fun execute(context: Context, grantId: String, action: String): Result =
+        executeThroughChain(
+            context = context,
+            tokenAuthenticator = TokenAuthenticator { candidate -> candidate == LOCAL_UI_TOKEN },
+            providedToken = LOCAL_UI_TOKEN,
+            grantId = grantId,
+            action = action,
+            payload = emptyMap(),
+        )
+
+    /** Bridge-ready path using the actual loopback token. */
+    fun executeSecured(
+        context: Context,
+        expectedToken: String,
+        providedToken: String?,
+        grantId: String,
+        action: String,
+        payload: Map<String, String> = emptyMap(),
+    ): Result = executeThroughChain(
+        context = context,
+        tokenAuthenticator = ConstantTimeTokenAuthenticator(expectedToken),
+        providedToken = providedToken,
+        grantId = grantId,
+        action = action,
+        payload = payload,
+    )
+
+    private fun executeThroughChain(
+        context: Context,
+        tokenAuthenticator: TokenAuthenticator,
+        providedToken: String?,
+        grantId: String,
+        action: String,
+        payload: Map<String, String>,
+    ): Result {
+        val normalizedAction = action.trim().lowercase()
+        if (normalizedAction !in SUPPORTED_ACTIONS) {
             return Result(false, "ACTION_NOT_IMPLEMENTED")
         }
 
-        val grant = ActionApprovalStore.consumeGrant(
-            grantId = grantId,
-            action = action,
-        ) ?: return Result(false, "APPROVAL_INVALID_OR_EXPIRED")
+        val app = context.applicationContext
+        val chain = SecurityChain(
+            tokenAuthenticator = tokenAuthenticator,
+            inputValidator = ActionInputValidator(),
+            policyEvaluator = AndroidPolicyEvaluator(app),
+            permissionResolver = AndroidPermissionResolver(app),
+            confirmationGate = LocalApprovalConfirmationGate,
+            actionDispatcher = ActionDispatcher { descriptor, _ ->
+                val dispatched = dispatchApproved(app, descriptor.actionId)
+                DispatchResult(
+                    ok = dispatched.ok,
+                    code = dispatched.error,
+                )
+            },
+        )
 
-        return when (grant.action) {
-            ACTION_OPEN_SETTINGS -> openSettings(context.applicationContext)
-            ACTION_APK_INSTALL_LATEST -> installLatestTrustedApk(context.applicationContext)
-            else -> Result(false, "ACTION_NOT_IMPLEMENTED")
+        return when (val decision = chain.execute(
+            SecurityRequest(
+                actionId = normalizedAction,
+                payload = payload,
+                token = providedToken,
+                approvalGrantId = grantId,
+            ),
+        )) {
+            is SecurityDecision.Dispatched -> Result(
+                ok = decision.result.ok,
+                error = decision.result.code,
+            )
+
+            is SecurityDecision.PendingConfirmation -> Result(
+                ok = false,
+                error = "APPROVAL_REQUIRED:${decision.proposalId}",
+            )
+
+            is SecurityDecision.Denied -> Result(
+                ok = false,
+                error = decision.code,
+            )
         }
+    }
+
+    /** Called only after all SecurityChain gates have passed. */
+    private fun dispatchApproved(context: Context, action: String): Result = when (action) {
+        ACTION_OPEN_SETTINGS -> openSettings(context)
+        ACTION_APK_INSTALL_LATEST -> installLatestTrustedApk(context)
+        else -> Result(false, "ACTION_NOT_IMPLEMENTED")
     }
 
     private fun openSettings(context: Context): Result = runCatching {
@@ -62,6 +136,8 @@ object LocalDeviceActionExecutor {
 
     const val ACTION_OPEN_SETTINGS = "open_settings"
     const val ACTION_APK_INSTALL_LATEST = "apk_install_latest"
+
+    private const val LOCAL_UI_TOKEN = "x88-local-ui-authority"
 
     private val SUPPORTED_ACTIONS = setOf(
         ACTION_OPEN_SETTINGS,
