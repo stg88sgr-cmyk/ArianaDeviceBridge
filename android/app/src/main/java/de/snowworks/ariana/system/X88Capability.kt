@@ -12,5 +12,6 @@ enum class X88Capability {
     APP_CONTROL,
     MEDIA_CONTROL,
     AI_ROUTING,
+    APP_GENERATION,
     UPDATE_CONTROL,
 }
