@@ -145,7 +145,7 @@ jobs:
           ! grep -F 'ArianaDeviceApi' "$approval_file"
 
           grep -F 'ActionApprovalStore.createPending' "$policy_file"
-          grep -F 'pendingProposalId = pending.id' "$policy_file"
+          grep -F 'pendingProposalId = pending?.id' "$policy_file"
           grep -F 'ActionApprovalStore.revokeAll()' "$session_file"
 
           grep -F 'name = "Approval Pending-Queue"' "$test_file"
