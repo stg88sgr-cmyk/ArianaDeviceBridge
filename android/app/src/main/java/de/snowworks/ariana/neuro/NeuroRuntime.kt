@@ -19,6 +19,15 @@ enum class NeuroChannel {
     SAFETY,
     EXPRESSION,
     LIFECYCLE,
+
+    // V21-V30 evolution channels. These are internal-only semantic lanes and
+    // do not grant Android permissions or bypass the canonical action gates.
+    ATTENTION,
+    CONTEXT,
+    INTENT,
+    PLAN,
+    TELEMETRY,
+    INTEGRITY,
 }
 
 data class NeuroSignal(
