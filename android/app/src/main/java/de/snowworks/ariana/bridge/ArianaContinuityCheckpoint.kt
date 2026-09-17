@@ -16,6 +16,7 @@ class ArianaContinuityCheckpoint(context: Context) {
     private val appContext = context.applicationContext
     private val memoryStore = LocalMemoryStore(appContext)
     private val dailyMemory = ArianaDailyMemoryCore(appContext)
+    private val identityCore = ArianaIdentityCore(appContext)
     private val root = File(appContext.filesDir, ROOT_DIR).apply { mkdirs() }
     private val checkpointFile = File(root, CHECKPOINT_FILE)
     private val lock = Any()
@@ -24,15 +25,22 @@ class ArianaContinuityCheckpoint(context: Context) {
         val explicit = memoryStore.snapshot()
         val today = dailyMemory.todaySnapshot(nowEpochMs)
         val recent = dailyMemory.recentContext(MAX_RECENT_TURNS)
+        val identity = identityCore.snapshot()
 
         val json = JSONObject().apply {
             put("schemaVersion", SCHEMA_VERSION)
             put("updatedAtEpochMs", nowEpochMs)
             put("day", today.date)
             put("identity", JSONObject().apply {
-                put("name", "Ariana")
-                put("system", "ARIANA X-88")
-                put("continuityMode", "LOCAL_CHECKPOINT")
+                put("name", identity.name)
+                put("system", identity.system)
+                put("codename", identity.codename)
+                put("profileVersion", identity.profileVersion)
+                put("preferredLanguage", identity.preferredLanguage)
+                put("continuityMode", identity.continuityMode)
+                put("evolutionNotes", JSONArray().apply {
+                    identity.evolutionNotes.forEach(::put)
+                })
             })
             put("user", JSONObject().apply {
                 explicit.userName?.let { put("name", it) }
@@ -70,7 +78,7 @@ class ArianaContinuityCheckpoint(context: Context) {
     }
 
     private companion object {
-        const val SCHEMA_VERSION = 1
+        const val SCHEMA_VERSION = 2
         const val ROOT_DIR = "ariana_memory"
         const val CHECKPOINT_FILE = "continuity_latest.json"
         const val MAX_RECENT_TURNS = 12
