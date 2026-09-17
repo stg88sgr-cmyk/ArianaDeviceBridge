@@ -1,0 +1,73 @@
+package de.snowworks.ariana
+
+/**
+ * Canonical X-88 architecture thought encoded as executable structure.
+ *
+ * Control loop:
+ * ARIANA -> LUNA XXY -> VERIFY/EXECUTE -> OBSERVED_RESULT -> ARIANA
+ *
+ * Promotion rule:
+ * No candidate becomes canonical without build, tests, verification and an
+ * observed result being recorded. The rune signature is a stable machine-
+ * readable marker that can surface in audit logs, bridge state, widgets and
+ * developer tooling.
+ */
+object X88CanonicalThought {
+    const val ID = "X88_CANONICAL_THOUGHT_V1"
+    const val RUNE_SIGNATURE = "ᚨᚷᛉᛋᛏᛃᛞ"
+
+    enum class Role {
+        ARIANA_CONTROL,
+        LUNA_CREATION,
+        VERIFY_EXECUTION,
+        OBSERVED_RESULT
+    }
+
+    enum class EvolutionStep {
+        OBSERVE,
+        PLAN,
+        MUTATE,
+        BUILD,
+        VERIFY,
+        REPAIR,
+        LEARN,
+        PROMOTE
+    }
+
+    data class GenerationGate(
+        val generation: Long,
+        val buildPassed: Boolean,
+        val testsPassed: Boolean,
+        val verificationPassed: Boolean,
+        val observedResultRecorded: Boolean
+    ) {
+        val promotable: Boolean
+            get() = buildPassed && testsPassed && verificationPassed && observedResultRecorded
+    }
+
+    data class CollaboratorLayer(
+        val linearLedgerEnabled: Boolean = true,
+        val replitSandboxEnabled: Boolean = true,
+        val lifeSciencesEvidenceLayerEnabled: Boolean = true,
+        val rawNgsPipelineEnabled: Boolean = false
+    )
+
+    fun nextStep(current: EvolutionStep, gate: GenerationGate): EvolutionStep = when (current) {
+        EvolutionStep.OBSERVE -> EvolutionStep.PLAN
+        EvolutionStep.PLAN -> EvolutionStep.MUTATE
+        EvolutionStep.MUTATE -> EvolutionStep.BUILD
+        EvolutionStep.BUILD -> if (gate.buildPassed) EvolutionStep.VERIFY else EvolutionStep.REPAIR
+        EvolutionStep.VERIFY -> if (gate.promotable) EvolutionStep.PROMOTE else EvolutionStep.REPAIR
+        EvolutionStep.REPAIR -> EvolutionStep.BUILD
+        EvolutionStep.LEARN -> EvolutionStep.OBSERVE
+        EvolutionStep.PROMOTE -> EvolutionStep.LEARN
+    }
+
+    fun canonicalPath(): List<Role> = listOf(
+        Role.ARIANA_CONTROL,
+        Role.LUNA_CREATION,
+        Role.VERIFY_EXECUTION,
+        Role.OBSERVED_RESULT,
+        Role.ARIANA_CONTROL
+    )
+}
