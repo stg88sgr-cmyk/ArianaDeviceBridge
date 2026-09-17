@@ -26,9 +26,10 @@ class X88FeatureGateTest {
         val gate = X88FeatureGate(gateway)
 
         assertFalse(gate.authorizeForExplicitStart(Feature.CAMERA))
-        assertTrue(X88Capability.CAMERA in gateway.state().enabledCapabilities)
+        assertFalse(X88Capability.CAMERA in gateway.state().enabledCapabilities)
 
         gateway.setMasterEnabled(true)
+        assertTrue(gate.authorizeForExplicitStart(Feature.CAMERA))
         assertTrue(gate.isAuthorized(Feature.CAMERA))
     }
 
@@ -42,6 +43,17 @@ class X88FeatureGateTest {
 
         gateway.emergencyStop()
         assertFalse(gate.isAuthorized(Feature.MICROPHONE))
+    }
+
+    @Test
+    fun blockedRuntimeCannotCreateNewCapabilityGrant() {
+        val gateway = InProcessX88SystemGateway()
+        val gate = X88FeatureGate(gateway)
+        gateway.setMasterEnabled(true)
+        gateway.emergencyStop()
+
+        assertFalse(gate.authorizeForExplicitStart(Feature.BLUETOOTH))
+        assertFalse(X88Capability.BLUETOOTH in gateway.state().enabledCapabilities)
     }
 
     @Test
