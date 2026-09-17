@@ -1,0 +1,9 @@
+# Reference fragment only. Wire into the appropriate platform/device policy tree
+# when building an AOSP image. Keep SELinux enforcing and preserve upstream
+# neverallow rules.
+
+type x88_system_service, service_manager_type;
+
+# Intentionally no broad allow rules here. Service registration and client
+# access must be added only after the concrete process domain and caller model
+# are fixed in the target AOSP tree.
