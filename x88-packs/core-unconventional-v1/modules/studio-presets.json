@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "presets": [
+    {
+      "id": "snowworks.cyber-textile.material-test-01",
+      "name": "Cyber-Textil-Labor / Materialversuch 01",
+      "mood": "dreamy, elegant, technical editorial",
+      "light": ["magenta", "cyan", "warm amber", "soft rim"],
+      "studio": "futuristic textile laboratory showroom",
+      "material": ["technical mesh", "transparent polymer layers", "cyber-thread embroidery"],
+      "camera": ["front", "profile", "rear", "material-detail"],
+      "content": "non-explicit adult fashion editorial"
+    }
+  ]
+}
