@@ -9,7 +9,18 @@ LUNA_HOME="${LUNA_HOME:-$HOME/.luna}"
 
 mkdir -p "$BIN_DIR" "$BOOT_DIR" "$ARIANA_HOME/logs" "$LUNA_HOME/logs"
 
-for file in runtime-common.sh all-tmux-bootstrap.sh all-tmux-status.sh x88-final-gate.sh; do
+RUNTIME_FILES=(
+  runtime-common.sh
+  tmux-job-runner.sh
+  tmux-adapter-common.sh
+  x88-adapter.sh
+  luna-adapter.sh
+  all-tmux-bootstrap.sh
+  all-tmux-status.sh
+  x88-final-gate.sh
+)
+
+for file in "${RUNTIME_FILES[@]}"; do
   install -m 700 "$SCRIPT_DIR/$file" "$BIN_DIR/$file"
 done
 
@@ -35,12 +46,16 @@ if [ ! -e "$ENV_FILE" ]; then
 # LUNA_XXY_WORKER_CMD='exec "$HOME/bin/luna-xxy-real-worker.sh"'
 X88_BRIDGE_HOST=127.0.0.1
 X88_BRIDGE_PORT=8765
+X88_ADAPTER_TIMEOUT=15
+X88_ADAPTER_MAX_BYTES=4096
 ENV
   chmod 600 "$ENV_FILE"
 fi
 
-printf '%s\n' 'Installed:'
-printf '  %s\n' "$BIN_DIR/runtime-common.sh" "$BIN_DIR/all-tmux-bootstrap.sh" "$BIN_DIR/all-tmux-status.sh" "$BIN_DIR/x88-final-gate.sh"
+printf '%s\n' 'Installed canonical runtime files:'
+for file in "${RUNTIME_FILES[@]}"; do
+  printf '  %s/%s\n' "$BIN_DIR" "$file"
+done
 printf '  %s\n' "$BOOT_DIR/x88-autostart.sh"
 
 MISSING=0
