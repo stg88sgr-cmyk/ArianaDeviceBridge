@@ -1,0 +1,71 @@
+name: X88 V20 Native APK
+
+on:
+  push:
+    branches: ["x88-v20-runtime"]
+    paths:
+      - "android/x88verify/**"
+      - "android/settings.gradle.kts"
+      - ".github/workflows/x88-v20-native-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android 36
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 8.11.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Build X88 V20
+        shell: bash
+        working-directory: android
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :x88verify:assembleDebug
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/x88verify/build/outputs/apk/debug/x88verify-debug.apk"
+          test -s "$APK"
+          cp "$APK" ARIANA-X88-V20-debug.apk
+          sha256sum ARIANA-X88-V20-debug.apk | tee ARIANA-X88-V20-debug.apk.sha256
+          SHA=$(sha256sum ARIANA-X88-V20-debug.apk | awk '{print $1}')
+          SIZE=$(stat -c '%s' ARIANA-X88-V20-debug.apk)
+          printf '{\n  "status": "SUCCESS",\n  "stage": "V20",\n  "artifact": "ARIANA-X88-V20-debug.apk",\n  "sha256": "%s",\n  "bytes": %s,\n  "build": ":x88verify:assembleDebug"\n}\n' "$SHA" "$SIZE" > ARIANA-X88-V20-build-proof.json
+
+      - name: Upload APK proof bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: ARIANA-X88-V20-debug
+          path: |
+            ARIANA-X88-V20-debug.apk
+            ARIANA-X88-V20-debug.apk.sha256
+            ARIANA-X88-V20-build-proof.json
+          if-no-files-found: error
+          retention-days: 14
