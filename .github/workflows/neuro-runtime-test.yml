@@ -1,4 +1,4 @@
-name: V16-V20 Neuro Runtime Gate
+name: V16-V30 Neuro Runtime Gate
 
 on:
   push:
@@ -67,11 +67,29 @@ jobs:
           unzip -q /tmp/gradle.zip -d "$HOME"
           echo "$HOME/gradle-8.11.1/bin" >> "$GITHUB_PATH"
 
-      - name: Run V16-V20 tests
+      - name: Verify V16-V30 stage continuity in source
+        shell: bash
+        run: |
+          set -euo pipefail
+          base='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntime.kt'
+          advanced='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntimeV21V30.kt'
+          test -f "$base"
+          test -f "$advanced"
+          for version in $(seq 16 20); do
+            grep -Eq "V${version}[A-Za-z0-9_]+" "$base"
+          done
+          for version in $(seq 21 30); do
+            grep -Eq "V${version}[A-Za-z0-9_]+" "$advanced"
+          done
+          grep -F 'requiresSecurityChain", "true"' "$advanced"
+          grep -F 'executionMode", "proposal_only"' "$advanced"
+
+      - name: Run V16-V30 tests
         working-directory: android
         shell: bash
         run: |
           set -euo pipefail
           gradle :app:testDebugUnitTest \
             --tests 'de.snowworks.ariana.neuro.V16ToV20NeuroRuntimeTest' \
+            --tests 'de.snowworks.ariana.neuro.V21ToV30NeuroRuntimeTest' \
             --stacktrace
