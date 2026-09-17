@@ -22,6 +22,10 @@ class ClaudeDialogueProvider(
     private val config: SecureAiProviderStore.Config,
 ) {
     fun generate(text: String): String {
+        if (!CloudAccessGate.isEnabled()) {
+            throw DialogueRouter.ProviderException("CLOUD_ACCESS_DISABLED")
+        }
+
         val policy = CloudAiPolicy.evaluate(text)
         val cloudText = when (policy.disposition) {
             CloudAiPolicy.Disposition.LOCAL_ONLY -> throw DialogueRouter.ProviderException(policy.reason ?: "CLOUD_POLICY_LOCAL_ONLY")
