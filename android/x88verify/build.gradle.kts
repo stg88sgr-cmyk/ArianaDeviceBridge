@@ -10,8 +10,8 @@ android {
         applicationId = "com.snowworks.arianax88.verify"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20
-        versionName = "20.0.0"
+        versionCode = 24
+        versionName = "24.0.0"
     }
 
     buildTypes {
