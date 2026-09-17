@@ -1,7 +1,10 @@
 package de.snowworks.ariana.system
 
+import kotlinx.coroutines.flow.StateFlow
+
 interface X88SystemGateway {
     fun state(): X88CoreState
+    fun observeState(): StateFlow<X88CoreState>
     fun startSession(): String
     fun stopSession(sessionId: String): Boolean
     fun setMasterEnabled(enabled: Boolean): X88CoreState
