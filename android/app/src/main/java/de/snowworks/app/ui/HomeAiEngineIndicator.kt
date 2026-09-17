@@ -10,14 +10,16 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import de.snowworks.ariana.bridge.AiRouteStateStore
+import de.snowworks.ariana.neuro.V31NeuroRuntime
 import de.snowworks.ariana.world.X88FantasyWorldBootstrap
 import java.lang.ref.WeakReference
 
 /**
  * Small, non-invasive HUD for X88HomeActivity.
  *
- * Shows which AI engine handled the most recent routed dialogue plus the current
- * fictional X88 realm. It stores neither prompts, replies nor credentials.
+ * Shows which AI engine handled the most recent routed dialogue, the current
+ * fictional X88 realm and bounded V31 runtime health metadata. It stores neither
+ * prompts, replies, signal payloads nor credentials.
  */
 object HomeAiEngineIndicator {
     private const val TAG = "x88_ai_engine_indicator"
@@ -35,7 +37,7 @@ object HomeAiEngineIndicator {
             setPadding(dp(activity, 12), dp(activity, 7), dp(activity, 12), dp(activity, 7))
             isClickable = true
             isFocusable = true
-            contentDescription = "Aktiver KI-Motor und symbolische X88-Welt. Tippen für KI-Provider-Einstellungen."
+            contentDescription = "Aktiver KI-Motor, V31 Runtime-Status und symbolische X88-Welt. Tippen für KI-Provider-Einstellungen."
             setOnClickListener {
                 activity.startActivity(Intent(activity, AiProviderSettingsActivity::class.java))
             }
@@ -61,10 +63,17 @@ object HomeAiEngineIndicator {
                 if (currentActivity.isFinishing || currentActivity.isDestroyed || badge.parent == null) return
 
                 val route = AiRouteStateStore.read(currentActivity.applicationContext)
+                val runtime = V31NeuroRuntime.currentOrNull()?.snapshot()
                 val world = X88FantasyWorldBootstrap.currentOrNull()?.currentState()
                 badge.text = buildString {
                     append("AI · ").append(route.engine)
                     if (route.fallbackUsed) append(" · FALLBACK")
+                    if (runtime != null) {
+                        append("\nNEURO V").append(runtime.runtimeVersion)
+                        append(if (runtime.green) " · GREEN" else " · CHECK")
+                        append(" · ").append(runtime.healthyStages).append('/').append(runtime.totalStages)
+                        append(" · ").append(runtime.lifecycleMode.uppercase())
+                    }
                     if (world != null) {
                         append("\nX88 · ")
                         append(world.realm.name.replace('_', ' '))
@@ -74,6 +83,15 @@ object HomeAiEngineIndicator {
                 }
                 badge.contentDescription = buildString {
                     append("Aktiver KI-Motor: ").append(route.engine)
+                    if (runtime != null) {
+                        append(". Neuro Runtime Version ").append(runtime.runtimeVersion)
+                        append(if (runtime.green) " gesund" else " prüfbedürftig")
+                        append(", ").append(runtime.healthyStages).append(" von ")
+                        append(runtime.totalStages).append(" Stufen gesund")
+                        append(", Lifecycle ").append(runtime.lifecycleMode)
+                        append(", ").append(runtime.moduleCount).append(" Module")
+                        append(", ").append(runtime.telemetryEntries).append(" Telemetrie-Metadaten-Einträge")
+                    }
                     if (world != null) {
                         append(". Symbolische X88-Welt: ")
                         append(world.realm.name.replace('_', ' '))
