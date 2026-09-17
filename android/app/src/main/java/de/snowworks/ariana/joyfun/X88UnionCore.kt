@@ -59,13 +59,16 @@ data class X88UnionState(
     val memoryConnected: Boolean,
     val creationEnabled: Boolean,
     val resonanceConnected: Boolean,
+    val infinity: InfinityResonanceState,
     val pattern: DivinePattern = DivinePattern(),
     val laws: List<X88CoreLaw> = X88UnionCore.CORE_LAWS,
     val transmutations: List<X88Transmutation> = X88UnionCore.TRANSMUTATIONS,
     val signature: String = X88Identity.SIGNATURE,
 )
 
-class X88UnionCore {
+class X88UnionCore(
+    private val infinityResonance: X88InfinityResonance = X88InfinityResonance(),
+) {
     fun regulate(input: HeartEngineInput): HeartEngineState {
         val emotion = input.emotion.coerce01()
         val memory = input.memory.coerce01()
@@ -115,6 +118,11 @@ class X88UnionCore {
             else -> X88UnionMode.DEGRADED
         }
 
+        val infinity = infinityResonance.initial(
+            coherence = heart.coherence,
+            resonance = evolution.resonance,
+        )
+
         return X88UnionState(
             mode = mode,
             coreStable = stable,
@@ -123,6 +131,7 @@ class X88UnionCore {
             memoryConnected = memoryConnected,
             creationEnabled = creationEnabled && stable,
             resonanceConnected = evolution.resonance >= 0.35f,
+            infinity = infinity,
         )
     }
 
