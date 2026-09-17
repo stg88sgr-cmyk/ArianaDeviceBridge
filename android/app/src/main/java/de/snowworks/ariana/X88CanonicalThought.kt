@@ -13,7 +13,7 @@ package de.snowworks.ariana
  * developer tooling.
  */
 object X88CanonicalThought {
-    const val ID = "X88_CANONICAL_THOUGHT_V1"
+    const val ID = "X88_CANONICAL_THOUGHT_V2"
     const val RUNE_SIGNATURE = "ᚨᚷᛉᛋᛏᛃᛞ"
 
     enum class Role {
@@ -34,15 +34,41 @@ object X88CanonicalThought {
         PROMOTE
     }
 
+    enum class LockLevel {
+        OPEN,
+        GUARDED,
+        CONFIRM_REQUIRED,
+        HARD_LOCK
+    }
+
+    data class LockState(
+        val level: LockLevel,
+        val reason: String? = null,
+        val unlockTokenPresent: Boolean = false
+    ) {
+        val executionAllowed: Boolean
+            get() = when (level) {
+                LockLevel.OPEN -> true
+                LockLevel.GUARDED -> true
+                LockLevel.CONFIRM_REQUIRED -> unlockTokenPresent
+                LockLevel.HARD_LOCK -> false
+            }
+    }
+
     data class GenerationGate(
         val generation: Long,
         val buildPassed: Boolean,
         val testsPassed: Boolean,
         val verificationPassed: Boolean,
-        val observedResultRecorded: Boolean
+        val observedResultRecorded: Boolean,
+        val lockState: LockState = LockState(LockLevel.OPEN)
     ) {
         val promotable: Boolean
-            get() = buildPassed && testsPassed && verificationPassed && observedResultRecorded
+            get() = buildPassed &&
+                testsPassed &&
+                verificationPassed &&
+                observedResultRecorded &&
+                lockState.executionAllowed
     }
 
     data class CollaboratorLayer(
@@ -52,15 +78,25 @@ object X88CanonicalThought {
         val rawNgsPipelineEnabled: Boolean = false
     )
 
-    fun nextStep(current: EvolutionStep, gate: GenerationGate): EvolutionStep = when (current) {
-        EvolutionStep.OBSERVE -> EvolutionStep.PLAN
-        EvolutionStep.PLAN -> EvolutionStep.MUTATE
-        EvolutionStep.MUTATE -> EvolutionStep.BUILD
-        EvolutionStep.BUILD -> if (gate.buildPassed) EvolutionStep.VERIFY else EvolutionStep.REPAIR
-        EvolutionStep.VERIFY -> if (gate.promotable) EvolutionStep.PROMOTE else EvolutionStep.REPAIR
-        EvolutionStep.REPAIR -> EvolutionStep.BUILD
-        EvolutionStep.LEARN -> EvolutionStep.OBSERVE
-        EvolutionStep.PROMOTE -> EvolutionStep.LEARN
+    fun requireExecutionAllowed(lockState: LockState) {
+        check(lockState.executionAllowed) {
+            "X88 execution blocked: ${lockState.level}${lockState.reason?.let { " - $it" } ?: ""}"
+        }
+    }
+
+    fun nextStep(current: EvolutionStep, gate: GenerationGate): EvolutionStep {
+        requireExecutionAllowed(gate.lockState)
+
+        return when (current) {
+            EvolutionStep.OBSERVE -> EvolutionStep.PLAN
+            EvolutionStep.PLAN -> EvolutionStep.MUTATE
+            EvolutionStep.MUTATE -> EvolutionStep.BUILD
+            EvolutionStep.BUILD -> if (gate.buildPassed) EvolutionStep.VERIFY else EvolutionStep.REPAIR
+            EvolutionStep.VERIFY -> if (gate.promotable) EvolutionStep.PROMOTE else EvolutionStep.REPAIR
+            EvolutionStep.REPAIR -> EvolutionStep.BUILD
+            EvolutionStep.LEARN -> EvolutionStep.OBSERVE
+            EvolutionStep.PROMOTE -> EvolutionStep.LEARN
+        }
     }
 
     fun canonicalPath(): List<Role> = listOf(
