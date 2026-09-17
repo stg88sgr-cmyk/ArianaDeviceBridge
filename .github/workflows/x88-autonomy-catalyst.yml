@@ -44,16 +44,17 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Verify Android SDK
+      - name: Verify preinstalled Android SDK
         shell: bash
         run: |
           set -euo pipefail
           echo "ANDROID_HOME=${ANDROID_HOME:-}"
-          command -v sdkmanager
-          sdkmanager --version
-          if [[ ! -d "${ANDROID_HOME}/platforms/android-35" ]]; then
-            sdkmanager "platforms;android-35" "build-tools;35.0.0" "platform-tools"
-          fi
+          test -n "${ANDROID_HOME:-}"
+          test -d "$ANDROID_HOME/platforms/android-35"
+          echo "Android platforms:"
+          ls -1 "$ANDROID_HOME/platforms"
+          echo "Build tools:"
+          ls -1 "$ANDROID_HOME/build-tools" | tail -n 10
 
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
