@@ -24,16 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Verify preinstalled Java and Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          java -version
+          test -n "${ANDROID_HOME:-}"
+          test -d "$ANDROID_HOME"
+          command -v sdkmanager
 
-      - name: Android SDK 36
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android platform
+      - name: Install Android platform 36
         shell: bash
         run: |
           set -euo pipefail
