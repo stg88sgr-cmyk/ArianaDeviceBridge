@@ -1,4 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
+# Shared library symbols are consumed by sourced runtime scripts.
+# shellcheck disable=SC2034
 set -Eeuo pipefail
 
 X88_HOME="${X88_HOME:-$HOME/.ariana}"
