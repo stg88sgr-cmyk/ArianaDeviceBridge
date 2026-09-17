@@ -56,6 +56,12 @@ object XSpaceBridgeActionRouter {
                     action = normalized,
                     payload = payload,
                 )
+                val review = XSpaceApprovalRequestStore.register(
+                    proposalId = proposalId,
+                    action = normalized,
+                    payload = payload,
+                )
+                XSpaceApprovalNotifier.post(context.applicationContext, review)
 
                 JSONObject()
                     .put("ok", false)
@@ -65,6 +71,8 @@ object XSpaceBridgeActionRouter {
                     .put("message", "Diese X-Space-Aktion benötigt eine sichtbare Bestätigung in der App.")
                     .put("requiresUserConfirmation", true)
                     .put("proposalId", proposalId)
+                    .put("reviewSummary", review.summary)
+                    .put("expiresAtMs", review.expiresAtMs)
             }
 
             ActionPolicy.Decision.BLOCKED -> error(

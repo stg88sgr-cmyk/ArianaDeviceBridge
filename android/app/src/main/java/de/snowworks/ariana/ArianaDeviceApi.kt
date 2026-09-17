@@ -7,9 +7,16 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.provider.Settings
 import de.snowworks.app.widget.ArianaWakewordService
-import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.bridge.LocalBridgeServer
+import de.snowworks.ariana.session.ArianaCaptureService
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.xspace.XSpaceApprovalActivity
+import de.snowworks.ariana.xspace.XSpaceApprovalRequestStore
+import de.snowworks.ariana.xspace.XSpaceBridgeActionRouter
+import de.snowworks.ariana.xspace.XSpaceConfirmedActionExecutor
+import de.snowworks.ariana.xspace.XSpaceGatewayClient
+import org.json.JSONObject
+import java.util.UUID
 
 /**
  * Internal interface for permission status, start/stop, master, and errors.
@@ -127,6 +134,41 @@ class ArianaDeviceApi(private val context: Context) {
         return ArianaResult.Ok(Unit)
     }
 
+    /**
+     * Create a local X Space proposal. CONFIRM actions enter the visible review
+     * queue and open the non-exported approval activity for that exact proposal.
+     */
+    fun proposeXSpaceAction(
+        action: String,
+        payload: JSONObject = JSONObject(),
+    ): JSONObject {
+        val result = XSpaceBridgeActionRouter.dispatch(
+            context = context.applicationContext,
+            requestId = UUID.randomUUID().toString(),
+            action = action,
+            payload = payload,
+        )
+        if (result.optBoolean("requiresUserConfirmation", false)) {
+            val proposalId = result.optString("proposalId").trim()
+            if (proposalId.isNotEmpty()) {
+                XSpaceApprovalActivity.launch(context, proposalId)
+            }
+        }
+        return result
+    }
+
+    /** Pending X Space actions are safe, sanitized descriptions for visible UI. */
+    fun pendingXSpaceApprovals(): List<XSpaceApprovalRequestStore.ReviewRequest> =
+        XSpaceConfirmedActionExecutor.pending()
+
+    /** Call only from the visible approve button for the matching proposal. */
+    fun approveXSpaceAction(proposalId: String): JSONObject =
+        XSpaceConfirmedActionExecutor.approveAndExecute(context, proposalId)
+
+    /** Call only from the visible deny/cancel button. */
+    fun denyXSpaceAction(proposalId: String): JSONObject =
+        XSpaceConfirmedActionExecutor.deny(proposalId)
+
     fun createScreenCaptureIntent(): Intent {
         val mgr = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         return mgr.createScreenCaptureIntent()
@@ -145,5 +187,7 @@ class ArianaDeviceApi(private val context: Context) {
         ArianaWakewordService.stop(context)
         ArianaCaptureService.stopAll(context)
         SessionRegistry.clear()
+        XSpaceGatewayClient.disconnect()
+        XSpaceConfirmedActionExecutor.revokeAll()
     }
 }

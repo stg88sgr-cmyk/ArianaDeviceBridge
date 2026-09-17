@@ -54,6 +54,11 @@ object XSpaceApprovalBindingStore {
     }
 
     @Synchronized
+    fun revoke(proposalId: String) {
+        bindings.remove(proposalId)
+    }
+
+    @Synchronized
     fun revokeAll() {
         bindings.clear()
     }
