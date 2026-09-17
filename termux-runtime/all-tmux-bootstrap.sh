@@ -88,6 +88,8 @@ acquire_bootstrap_lock() {
   return 0
 }
 
+# Invoked indirectly by trap.
+# shellcheck disable=SC2317
 cleanup_bootstrap_lock() {
   # Only remove the lock when this process still owns it.
   if [ -r "$LOCK_DIR/pid" ] && [ "$(cat "$LOCK_DIR/pid" 2>/dev/null || true)" = "$$" ]; then
