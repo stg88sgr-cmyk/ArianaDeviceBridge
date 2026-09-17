@@ -38,7 +38,17 @@ class ArianaDeviceApi(private val context: Context) {
             stopAllSessions()
             LocalBridgeServer.stop()
         }
-        gate.setMasterEnabled(enabled)
+
+        val applied = gate.setMasterEnabled(enabled)
+        if (!applied) {
+            return ArianaResult.Err(
+                ArianaError(
+                    ArianaError.Code.BLOCKED,
+                    "Der X-88 Master-Schalter konnte wegen eines aktiven Sicherheitszustands nicht aktiviert werden.",
+                ),
+            )
+        }
+
         if (enabled) LocalBridgeServer.start(context)
         return ArianaResult.Ok(Unit)
     }
