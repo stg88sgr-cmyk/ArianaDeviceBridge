@@ -198,15 +198,15 @@ class V18ResonanceMemory(
         require(capacity > 0) { "capacity must be > 0" }
     }
 
-    @Synchronized
     override suspend fun onSignal(signal: NeuroSignal): List<NeuroSignal> {
-        if (signals.size == capacity) signals.removeFirst()
-        signals.addLast(signal)
+        synchronized(signals) {
+            if (signals.size == capacity) signals.removeFirst()
+            signals.addLast(signal)
+        }
         return emptyList()
     }
 
-    @Synchronized
-    fun recent(): List<NeuroSignal> = signals.toList()
+    fun recent(): List<NeuroSignal> = synchronized(signals) { signals.toList() }
 }
 
 /** V19 - converts internal emotion state into a neutral expression directive. */
