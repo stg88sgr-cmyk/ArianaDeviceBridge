@@ -5,6 +5,7 @@ class InProcessX88SystemGateway(
     private val executor: (X88Command) -> X88CommandResult = { command ->
         X88CommandResult.accepted(command.id)
     },
+    private val auditLog: X88AuditLog = X88AuditLog(),
 ) : X88SystemGateway {
 
     override fun state(): X88CoreState = core.capabilities.snapshot()
@@ -27,19 +28,24 @@ class InProcessX88SystemGateway(
     override fun clearEmergencyStop(): X88CoreState = core.emergencyStop.release()
 
     override fun submit(command: X88Command): X88CommandResult {
-        if (!core.canExecute(command.capability, command.sessionId)) {
-            return X88CommandResult.rejected(
+        val result = if (!core.canExecute(command.capability, command.sessionId)) {
+            X88CommandResult.rejected(
                 commandId = command.id,
                 code = "X88_GATE_REJECTED",
             )
+        } else {
+            runCatching { executor(command) }
+                .getOrElse { error ->
+                    X88CommandResult.rejected(
+                        commandId = command.id,
+                        code = "X88_EXECUTION_FAILED",
+                        message = error.message,
+                    )
+                }
         }
-        return runCatching { executor(command) }
-            .getOrElse { error ->
-                X88CommandResult.rejected(
-                    commandId = command.id,
-                    code = "X88_EXECUTION_FAILED",
-                    message = error.message,
-                )
-            }
+        auditLog.record(command, result)
+        return result
     }
+
+    override fun auditSnapshot(): List<X88AuditEvent> = auditLog.snapshot()
 }
