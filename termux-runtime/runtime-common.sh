@@ -10,6 +10,7 @@ X88_RUNTIME_DIR="${X88_RUNTIME_DIR:-$X88_HOME/runtime}"
 X88_LOG_DIR="${X88_LOG_DIR:-$X88_HOME/logs}"
 X88_BRIDGE_HOST="${X88_BRIDGE_HOST:-127.0.0.1}"
 X88_BRIDGE_PORT="${X88_BRIDGE_PORT:-8765}"
+X88_BRIDGE_OWNER="${X88_BRIDGE_OWNER:-android}"
 
 X88_SESSIONS=(
   x88-bridge
@@ -48,7 +49,10 @@ idle_loop='while :; do sleep 3600; done'
 resolve_session_command() {
   case "$1" in
     x88-bridge)
-      printf '%s' "${X88_BRIDGE_CMD:-if [ -x \"$X88_BIN/x88-bridge-start.sh\" ]; then exec \"$X88_BIN/x88-bridge-start.sh\"; else $idle_loop; fi}"
+      # Android LocalBridgeServer is the canonical owner of 127.0.0.1:8765.
+      # This tmux session is a coordinator/client slot and must not implicitly
+      # start a competing listener. Override only with a non-listening client.
+      printf '%s' "${X88_BRIDGE_CMD:-$idle_loop}"
       ;;
     x88-build)
       printf '%s' "${X88_BUILD_CMD:-$idle_loop}"
