@@ -1,6 +1,7 @@
 package de.snowworks.ariana.system
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -27,6 +28,28 @@ class PersistingX88SystemGatewayTest {
 
         gateway.disable(X88Capability.FILES)
         assertFalse(X88Capability.FILES in store.load().enabledCapabilities)
+    }
+
+    @Test
+    fun restartRestoresPreferencesButDropsRuntimeAuthority() {
+        val store = MemoryStore()
+        val first = PersistingX88SystemGateway(InProcessX88SystemGateway(), store)
+
+        first.enable(X88Capability.CAMERA)
+        first.enable(X88Capability.MICROPHONE)
+        first.startSession()
+        first.setMasterEnabled(true)
+        first.emergencyStop()
+
+        val restarted = PersistingX88SystemGateway(InProcessX88SystemGateway(), store)
+        val state = restarted.state()
+
+        assertTrue(X88Capability.CAMERA in state.enabledCapabilities)
+        assertTrue(X88Capability.MICROPHONE in state.enabledCapabilities)
+        assertFalse(state.masterEnabled)
+        assertFalse(state.emergencyStopActive)
+        assertFalse(state.quarantineActive)
+        assertNull(state.activeSessionId)
     }
 
     private class MemoryStore(
