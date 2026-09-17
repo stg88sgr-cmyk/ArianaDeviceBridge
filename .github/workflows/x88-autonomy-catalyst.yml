@@ -44,17 +44,32 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Verify preinstalled Android SDK
+      - name: Android 16 / API 36 source gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'id("com.android.application") version "8.9.1" apply false' android/build.gradle.kts
+          grep -F 'compileSdk = 36' android/app/build.gradle.kts
+          grep -F 'targetSdk = 36' android/app/build.gradle.kts
+          grep -F 'distributionUrl=https\://services.gradle.org/distributions/gradle-8.11.1-bin.zip' android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Ensure Android 16 SDK
         shell: bash
         run: |
           set -euo pipefail
           echo "ANDROID_HOME=${ANDROID_HOME:-}"
           test -n "${ANDROID_HOME:-}"
-          test -d "$ANDROID_HOME/platforms/android-35"
-          echo "Android platforms:"
-          ls -1 "$ANDROID_HOME/platforms"
-          echo "Build tools:"
-          ls -1 "$ANDROID_HOME/build-tools" | tail -n 10
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          test -x "$SDKMANAGER"
+          if [[ ! -d "$ANDROID_HOME/platforms/android-36" || ! -d "$ANDROID_HOME/build-tools/36.0.0" ]]; then
+            yes | "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools" >/tmp/x88-sdkmanager.log || {
+              cat /tmp/x88-sdkmanager.log
+              exit 1
+            }
+          fi
+          test -d "$ANDROID_HOME/platforms/android-36"
+          test -d "$ANDROID_HOME/build-tools/36.0.0"
+          echo "API 36 SDK ready"
 
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
@@ -65,9 +80,30 @@ jobs:
         working-directory: android
         run: gradle :app:testDebugUnitTest :app:assembleDebug --parallel --build-cache --configuration-cache --stacktrace
 
+      - name: Verify APK package metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/debug -name '*.apk' -type f | head -n 1)"
+          test -n "$APK"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          test -x "$AAPT2"
+          "$AAPT2" dump badging "$APK" | tee android/app/build/outputs/apk/debug/x88-api36-badging.txt
+          grep -F "targetSdkVersion:'36'" android/app/build/outputs/apk/debug/x88-api36-badging.txt
+
+      - name: SHA-256 APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd android/app/build/outputs/apk/debug
+          sha256sum *.apk | tee SHA256SUMS.txt
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: x88-autonomy-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: x88-autonomy-api36-debug-apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/debug/x88-api36-badging.txt
+            android/app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
