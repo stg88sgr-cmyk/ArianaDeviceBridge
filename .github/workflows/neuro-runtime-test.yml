@@ -9,6 +9,7 @@ on:
       - 'android/app/src/main/java/de/snowworks/ariana/world/**'
       - 'android/app/src/test/java/de/snowworks/ariana/world/**'
       - 'android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
+      - 'android/app/src/main/java/de/snowworks/app/ui/HomeAiEngineIndicator.kt'
       - '.github/workflows/neuro-runtime-test.yml'
   workflow_dispatch:
 
@@ -78,10 +79,12 @@ jobs:
           advanced='android/app/src/main/java/de/snowworks/ariana/neuro/NeuroRuntimeV21V30.kt'
           world='android/app/src/main/java/de/snowworks/ariana/world/X88FantasyWorldEngine.kt'
           bootstrap='android/app/src/main/java/de/snowworks/ariana/world/X88FantasyWorldBootstrap.kt'
+          hud='android/app/src/main/java/de/snowworks/app/ui/HomeAiEngineIndicator.kt'
           test -f "$base"
           test -f "$advanced"
           test -f "$world"
           test -f "$bootstrap"
+          test -f "$hud"
           for version in $(seq 16 20); do
             grep -Eq "V${version}[A-Za-z0-9_]+" "$base"
           done
@@ -92,6 +95,7 @@ jobs:
           grep -F 'executionMode", "proposal_only"' "$advanced"
           grep -F 'physicalEffect" to "false"' "$world"
           grep -F 'X88FantasyWorldBootstrap.attach' 'android/app/src/main/java/de/snowworks/app/SnowworksApp.kt'
+          grep -F 'X88FantasyWorldBootstrap.currentOrNull()' "$hud"
 
       - name: Run V16-V30 and fantasy-world tests
         working-directory: android
