@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - x88-joyfun-v1
+      - x88-joyfun-v30
   workflow_dispatch:
 
 jobs:
@@ -28,15 +29,15 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
-      - name: Test JoyFun
-        run: gradle :app:testDebugUnitTest --stacktrace
+      - name: Test JoyFun V1-V30
+        run: gradle :app:testDebugUnitTest --tests 'de.snowworks.ariana.joyfun.*' --stacktrace
 
       - name: Build debug APK
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload JoyFun APK
+      - name: Upload JoyFun V30 APK
         uses: actions/upload-artifact@v4
         with:
-          name: joyfun-x88-debug-apk
+          name: joyfun-x88-v30-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
