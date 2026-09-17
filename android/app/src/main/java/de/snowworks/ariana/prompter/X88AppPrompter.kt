@@ -19,10 +19,27 @@ sealed interface AppPrompterResult {
     ) : AppPrompterResult
 }
 
+sealed interface AppProjectGenerationResult {
+    data class Generated(
+        val spec: AppSpec,
+        val project: GeneratedProject,
+    ) : AppProjectGenerationResult
+
+    data class Rejected(
+        val reason: String,
+        val validation: ValidationResult? = null,
+    ) : AppProjectGenerationResult
+
+    data class Denied(
+        val reason: String,
+    ) : AppProjectGenerationResult
+}
+
 class X88AppPrompter(
     private val core: X88Core,
     private val compiler: PromptToAppSpecCompiler = PromptToAppSpecCompiler(),
     private val validator: AppSpecValidator = AppSpecValidator(),
+    private val generator: ComposeProjectGenerator = ComposeProjectGenerator(),
 ) {
     fun compile(sessionId: String?, prompt: String): AppPrompterResult {
         if (!core.canExecute(X88Capability.APP_GENERATION, sessionId)) {
@@ -49,4 +66,17 @@ class X88AppPrompter(
             )
         }
     }
+
+    fun generateProject(sessionId: String?, prompt: String): AppProjectGenerationResult =
+        when (val compiled = compile(sessionId, prompt)) {
+            is AppPrompterResult.Accepted -> AppProjectGenerationResult.Generated(
+                spec = compiled.spec,
+                project = generator.generate(compiled.spec),
+            )
+            is AppPrompterResult.Rejected -> AppProjectGenerationResult.Rejected(
+                reason = compiled.reason,
+                validation = compiled.validation,
+            )
+            is AppPrompterResult.Denied -> AppProjectGenerationResult.Denied(compiled.reason)
+        }
 }
