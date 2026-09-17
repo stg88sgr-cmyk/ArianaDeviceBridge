@@ -27,7 +27,7 @@ class InProcessX88SystemGatewayTest {
     }
 
     @Test
-    fun emergencyStopBlocksUntilExplicitMasterReenable() {
+    fun emergencyStopBlocksPreviouslyAllowedCommand() {
         val gateway = InProcessX88SystemGateway()
         val session = gateway.startSession()
         gateway.setMasterEnabled(true)
@@ -40,15 +40,34 @@ class InProcessX88SystemGatewayTest {
         )
 
         assertTrue(gateway.submit(command).accepted)
-
         gateway.emergencyStop()
         assertFalse(gateway.submit(command).accepted)
-
         gateway.clearEmergencyStop()
         assertFalse(gateway.submit(command).accepted)
-
         gateway.setMasterEnabled(true)
         assertTrue(gateway.submit(command).accepted)
+    }
+
+    @Test
+    fun liveStateSurfaceTracksCanonicalHolder() {
+        val gateway = InProcessX88SystemGateway()
+        val liveState = gateway.observeState()
+
+        assertEquals(gateway.state(), liveState.value)
+
+        val session = gateway.startSession()
+        gateway.enable(X88Capability.CAMERA)
+        gateway.setMasterEnabled(true)
+
+        assertEquals(session, liveState.value.activeSessionId)
+        assertTrue(liveState.value.masterEnabled)
+        assertTrue(X88Capability.CAMERA in liveState.value.enabledCapabilities)
+
+        gateway.emergencyStop()
+
+        assertTrue(liveState.value.emergencyStopActive)
+        assertFalse(liveState.value.masterEnabled)
+        assertEquals(RuntimeMode.EMERGENCY_STOP, liveState.value.runtimeMode)
     }
 
     @Test
