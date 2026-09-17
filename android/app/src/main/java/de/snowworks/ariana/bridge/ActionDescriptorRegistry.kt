@@ -5,6 +5,10 @@ import de.snowworks.ariana.Feature
 /**
  * Canonical metadata for an action. Callers provide only actionId + payload;
  * policy level and capabilities are derived here.
+ *
+ * Stop/revocation actions intentionally require no feature permission. A user
+ * must always be able to stop an active capability even if Android permission
+ * was revoked while the session was running.
  */
 enum class ConfirmationRequirement { SAFE, CONFIRM }
 
@@ -28,9 +32,9 @@ object ActionDescriptorRegistry {
         ActionDescriptor("get_device_status", ConfirmationRequirement.SAFE),
         ActionDescriptor("get_permission_status", ConfirmationRequirement.SAFE),
         ActionDescriptor("get_active_sessions", ConfirmationRequirement.SAFE),
-        ActionDescriptor("camera_stop", ConfirmationRequirement.SAFE, setOf(Feature.CAMERA)),
-        ActionDescriptor("microphone_stop", ConfirmationRequirement.SAFE, setOf(Feature.MICROPHONE)),
-        ActionDescriptor("screen_stop", ConfirmationRequirement.SAFE, setOf(Feature.SCREEN)),
+        ActionDescriptor("camera_stop", ConfirmationRequirement.SAFE),
+        ActionDescriptor("microphone_stop", ConfirmationRequirement.SAFE),
+        ActionDescriptor("screen_stop", ConfirmationRequirement.SAFE),
         ActionDescriptor("stop_all", ConfirmationRequirement.SAFE),
         ActionDescriptor("presence_clear", ConfirmationRequirement.SAFE),
         ActionDescriptor("apk_status", ConfirmationRequirement.SAFE),
