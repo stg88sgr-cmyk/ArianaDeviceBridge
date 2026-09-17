@@ -1,0 +1,41 @@
+name: JoyFun APK
+
+on:
+  push:
+    branches:
+      - x88-joyfun-v1
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+          cache-dependency-path: android/**/*.gradle*
+
+      - name: Make Gradle executable
+        run: chmod +x ./gradlew
+
+      - name: Test JoyFun
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Upload JoyFun APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: joyfun-x88-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
