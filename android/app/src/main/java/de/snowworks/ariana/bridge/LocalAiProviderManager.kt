@@ -61,7 +61,11 @@ object LocalAiProviderManager {
             activateConfigured(context)
         } else {
             closeRuntime()
-            AiProviderManager.activateConfigured(context)
+            if (CloudAccessGate.isEnabled()) {
+                AiProviderManager.activateConfigured(context)
+            } else {
+                DialogueRouter.unregister()
+            }
         }
         return status(context)
     }
@@ -70,7 +74,11 @@ object LocalAiProviderManager {
     fun clear(context: Context): Status {
         closeRuntime()
         LocalModelStore(context).clear()
-        AiProviderManager.activateConfigured(context)
+        if (CloudAccessGate.isEnabled()) {
+            AiProviderManager.activateConfigured(context)
+        } else {
+            DialogueRouter.unregister()
+        }
         return status(context)
     }
 
