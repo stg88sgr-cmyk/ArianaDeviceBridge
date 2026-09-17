@@ -10,13 +10,14 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import de.snowworks.ariana.bridge.AiRouteStateStore
+import de.snowworks.ariana.world.X88FantasyWorldBootstrap
 import java.lang.ref.WeakReference
 
 /**
  * Small, non-invasive HUD for X88HomeActivity.
  *
- * Shows which AI engine handled the most recent routed dialogue without
- * storing or rendering prompts, replies or credentials.
+ * Shows which AI engine handled the most recent routed dialogue plus the current
+ * fictional X88 realm. It stores neither prompts, replies nor credentials.
  */
 object HomeAiEngineIndicator {
     private const val TAG = "x88_ai_engine_indicator"
@@ -34,7 +35,7 @@ object HomeAiEngineIndicator {
             setPadding(dp(activity, 12), dp(activity, 7), dp(activity, 12), dp(activity, 7))
             isClickable = true
             isFocusable = true
-            contentDescription = "Aktiver KI-Motor. Tippen für KI-Provider-Einstellungen."
+            contentDescription = "Aktiver KI-Motor und symbolische X88-Welt. Tippen für KI-Provider-Einstellungen."
             setOnClickListener {
                 activity.startActivity(Intent(activity, AiProviderSettingsActivity::class.java))
             }
@@ -59,10 +60,28 @@ object HomeAiEngineIndicator {
                 val badge = viewRef.get() ?: return
                 if (currentActivity.isFinishing || currentActivity.isDestroyed || badge.parent == null) return
 
-                val state = AiRouteStateStore.read(currentActivity.applicationContext)
+                val route = AiRouteStateStore.read(currentActivity.applicationContext)
+                val world = X88FantasyWorldBootstrap.currentOrNull()?.currentState()
                 badge.text = buildString {
-                    append("AI · ").append(state.engine)
-                    if (state.fallbackUsed) append(" · FALLBACK")
+                    append("AI · ").append(route.engine)
+                    if (route.fallbackUsed) append(" · FALLBACK")
+                    if (world != null) {
+                        append("\nX88 · ")
+                        append(world.realm.name.replace('_', ' '))
+                        append(" · ")
+                        append(world.pattern.name.replace('_', ' '))
+                    }
+                }
+                badge.contentDescription = buildString {
+                    append("Aktiver KI-Motor: ").append(route.engine)
+                    if (world != null) {
+                        append(". Symbolische X88-Welt: ")
+                        append(world.realm.name.replace('_', ' '))
+                        append(", Muster ")
+                        append(world.pattern.name.replace('_', ' '))
+                        append(". Fiktive Visualisierung ohne physische Wirkung.")
+                    }
+                    append(" Tippen für KI-Provider-Einstellungen.")
                 }
                 handler.postDelayed(this, REFRESH_MS)
             }
