@@ -9,9 +9,9 @@ import de.snowworks.ariana.apk.ApkManager
 /**
  * Executes the small, explicit set of local device actions.
  *
- * All supported actions now pass through the canonical SecurityChain before the
- * dispatcher is reached. Unsupported actions are rejected before confirmation
- * grants can be consumed.
+ * The original synchronous API is retained for compatibility. New callers should
+ * prefer executeSuspend/executeSecuredSuspend, which return the canonical
+ * ArianaResult and pass through the suspend-capable X-88 result pipeline.
  */
 object LocalDeviceActionExecutor {
     data class Result(
@@ -33,7 +33,7 @@ object LocalDeviceActionExecutor {
             payload = emptyMap(),
         )
 
-    /** Bridge-ready path using the actual loopback token. */
+    /** Bridge-ready synchronous compatibility path using the actual loopback token. */
     fun executeSecured(
         context: Context,
         expectedToken: String,
@@ -48,6 +48,44 @@ object LocalDeviceActionExecutor {
         grantId = grantId,
         action = action,
         payload = payload,
+    )
+
+    /**
+     * Final X-88 in-process execution path.
+     * Returns ArianaResult and supports suspend dispatch, timeout and cancellation.
+     */
+    suspend fun executeSuspend(
+        context: Context,
+        grantId: String,
+        action: String,
+        timeoutMs: Long = ArianaResultExecutor.DEFAULT_TIMEOUT_MS,
+    ): ArianaResult = executeSuspendThroughChain(
+        context = context,
+        tokenAuthenticator = TokenAuthenticator { candidate -> candidate == LOCAL_UI_TOKEN },
+        providedToken = LOCAL_UI_TOKEN,
+        grantId = grantId,
+        action = action,
+        payload = emptyMap(),
+        timeoutMs = timeoutMs,
+    )
+
+    /** Final X-88 loopback-token path for coroutine-aware callers. */
+    suspend fun executeSecuredSuspend(
+        context: Context,
+        expectedToken: String,
+        providedToken: String?,
+        grantId: String,
+        action: String,
+        payload: Map<String, String> = emptyMap(),
+        timeoutMs: Long = ArianaResultExecutor.DEFAULT_TIMEOUT_MS,
+    ): ArianaResult = executeSuspendThroughChain(
+        context = context,
+        tokenAuthenticator = ConstantTimeTokenAuthenticator(expectedToken),
+        providedToken = providedToken,
+        grantId = grantId,
+        action = action,
+        payload = payload,
+        timeoutMs = timeoutMs,
     )
 
     private fun executeThroughChain(
@@ -102,6 +140,54 @@ object LocalDeviceActionExecutor {
                 error = decision.code,
             )
         }
+    }
+
+    private suspend fun executeSuspendThroughChain(
+        context: Context,
+        tokenAuthenticator: TokenAuthenticator,
+        providedToken: String?,
+        grantId: String,
+        action: String,
+        payload: Map<String, String>,
+        timeoutMs: Long,
+    ): ArianaResult {
+        val normalizedAction = action.trim().lowercase()
+        if (normalizedAction !in SUPPORTED_ACTIONS) {
+            return ArianaResult.error(
+                actionId = normalizedAction.ifBlank { "invalid_action" },
+                code = "ACTION_NOT_IMPLEMENTED",
+                message = "Local device action is not implemented.",
+            )
+        }
+
+        val app = context.applicationContext
+        val chain = SuspendSecurityChain(
+            tokenAuthenticator = tokenAuthenticator,
+            inputValidator = ActionInputValidator(),
+            policyEvaluator = AndroidPolicyEvaluator(app),
+            permissionResolver = AndroidPermissionResolver(app),
+            confirmationGate = LocalApprovalConfirmationGate,
+            actionDispatcher = SuspendActionDispatcher { descriptor, _ ->
+                val dispatched = dispatchApproved(app, descriptor.actionId)
+                DispatchResult(
+                    ok = dispatched.ok,
+                    code = dispatched.error ?: if (dispatched.ok) "DISPATCH_OK" else "DISPATCH_FAILED",
+                    message = if (dispatched.ok) "Local device action completed." else "Local device action failed.",
+                )
+            },
+        )
+
+        return X88ResultTransmuter(
+            chain = chain,
+            timeoutMs = timeoutMs,
+        ).execute(
+            SecurityRequest(
+                actionId = normalizedAction,
+                payload = payload,
+                token = providedToken,
+                approvalGrantId = grantId,
+            ),
+        )
     }
 
     /** Called only after all SecurityChain gates have passed. */
