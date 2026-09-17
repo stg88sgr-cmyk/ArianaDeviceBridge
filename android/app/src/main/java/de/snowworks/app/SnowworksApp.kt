@@ -9,6 +9,7 @@ import de.snowworks.ariana.ArianaGate
 import de.snowworks.ariana.bridge.AiProviderHealth
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
+import de.snowworks.ariana.bridge.CloudAccessGate
 import de.snowworks.ariana.bridge.DialogueRouter
 import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
@@ -23,6 +24,9 @@ class SnowworksApp : Application() {
 
         // Device capture sessions remain intentionally non-restorable after process death.
         SessionRegistry.clear()
+
+        // Outbound AI access is deny-by-default and must be explicitly enabled.
+        CloudAccessGate.initialize(this)
 
         // Durable Universal Bridge V2 configuration survives process/app restarts.
         UniversalBridgeStateStore(this).ensureDefaults(
@@ -47,18 +51,20 @@ class SnowworksApp : Application() {
             LocalBridgeServer.start(this)
         }
 
-        // Prefer Ariana's local providers. A configured HTTPS provider remains
-        // available as a secondary multi-AI reviewer when local Ariana is active.
+        // Local-first boot. Remote providers are never selected as the active fallback
+        // while the outbound gate is disabled.
         if (!LoopbackArianaProviderManager.activateIfAvailable() &&
-            !LocalAiProviderManager.activateConfigured(this)
+            !LocalAiProviderManager.activateConfigured(this) &&
+            CloudAccessGate.isEnabled()
         ) {
             AiProviderManager.activateConfigured(this)
         }
 
-        // Process-local background recovery: probes only configured providers that
-        // have completed their cooldown and are RECOVERY READY. It never changes
-        // DialogueRouter's active provider and creates no new Android permission need.
-        AiProviderRecoverySupervisor.start(this)
+        // Remote recovery probes are network-capable, so they only run when the
+        // explicit outbound gate is enabled.
+        if (CloudAccessGate.isEnabled()) {
+            AiProviderRecoverySupervisor.start(this)
+        }
     }
 
     private fun registerHomeAiIndicator() {
