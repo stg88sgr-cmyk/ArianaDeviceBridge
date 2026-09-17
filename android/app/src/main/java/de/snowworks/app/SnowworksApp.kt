@@ -15,6 +15,7 @@ import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.system.X88AutonomyController
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 
 class SnowworksApp : Application() {
@@ -39,6 +40,11 @@ class SnowworksApp : Application() {
         AiProviderHealth.initialize(this)
         DialogueRouter.initialize(this)
         registerHomeAiIndicator()
+
+        // X88 process-local autonomy. It may self-heal its Binder/session connection,
+        // but it can never create authority: the existing user master gate and Stop-All
+        // remain the controlling source of truth, and no capability is auto-enabled.
+        X88AutonomyController.initialize(this)
 
         // Restore only the local loopback core when the user-controlled master gate
         // was already enabled and Stop-All has not blocked new actions.
