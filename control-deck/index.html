@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>X-88 Control Deck</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">SNOWWORKS STUDIO</div>
+      <h1>ARIANA X-88 CONTROL DECK</h1>
+    </div>
+    <div class="pill" id="sidecarStatus">SIDECAR · CHECKING</div>
+  </header>
+
+  <main class="grid">
+    <section class="panel span-2">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">PIPELINE</div>
+          <h2>Prompt → APK</h2>
+        </div>
+        <div class="pill" id="bridgeStatus">BRIDGE · UNKNOWN</div>
+      </div>
+      <div class="pipeline" id="pipeline"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Pairing</h2><span class="dot"></span></div>
+      <p class="muted">Der Pairing-Code bleibt lokal. Der Browser erhält kein Android-Bridge-Token.</p>
+      <form id="pairForm" class="stack">
+        <input id="pairingCode" maxlength="16" autocomplete="off" placeholder="8-stelliger Pairing-Code" />
+        <button>PAIR SESSION</button>
+      </form>
+      <div class="mono small" id="pairResult">Noch keine Session.</div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Ariana Dialogue</h2><span class="dot cyan"></span></div>
+      <form id="dialogueForm" class="stack">
+        <textarea id="dialogueText" rows="4" placeholder="Ariana, ..."></textarea>
+        <button>SEND TO X-88</button>
+      </form>
+      <pre id="dialogueResult" class="terminal">Warte auf Eingabe.</pre>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Action Proposal</h2><span class="dot pink"></span></div>
+      <form id="actionForm" class="stack">
+        <input id="actionName" value="open_settings" placeholder="open_settings" />
+        <button>PROPOSE ACTION</button>
+      </form>
+      <pre id="actionResult" class="terminal">Keine Aktion vorgeschlagen.</pre>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Device / APK</h2><span class="dot gold"></span></div>
+      <div class="kv"><span>Master</span><strong id="masterState">unknown</strong></div>
+      <div class="kv"><span>Bridge</span><strong id="bridgeAddress">127.0.0.1:8765</strong></div>
+      <div class="kv"><span>Presence</span><strong id="presenceState">unknown</strong></div>
+      <div class="kv"><span>APK</span><strong id="apkState">not queried</strong></div>
+      <button id="refreshButton" class="secondary">REFRESH REAL STATUS</button>
+    </section>
+
+    <section class="panel span-2">
+      <div class="panel-head"><h2>Audit Console</h2><span class="dot cyan"></span></div>
+      <pre id="log" class="terminal tall"></pre>
+    </section>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
