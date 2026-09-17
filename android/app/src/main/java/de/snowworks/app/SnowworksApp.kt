@@ -15,6 +15,7 @@ import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
+import de.snowworks.ariana.neuro.V20NeuroRuntime
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 
@@ -36,6 +37,12 @@ class SnowworksApp : Application() {
         // Consolidated Universal Core V2 runtime. It mirrors the current master/stop state
         // and becomes the single home for task scheduling, telemetry and adaptive runtime work.
         ArianaUniversalRuntimeV2.initialize(this)
+
+        // V16-V20 neuro runtime is an internal local signal layer. It auto-wires declared
+        // channels, regulates bounded software emotion state, keeps bounded recent memory,
+        // routes expression feedback and exposes a fail-closed health gate. It grants no
+        // Android permissions and does not bypass the existing Ariana/X88 safety gates.
+        V20NeuroRuntime.initialize()
 
         // Restore cloud provider circuit-breaker/recovery metadata before any AI
         // provider can be selected or called. No prompts, replies or credentials
