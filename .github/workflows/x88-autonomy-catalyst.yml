@@ -25,12 +25,15 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Compile controller
-        run: python -m py_compile tools/x88/x88_build_controller.py
+      - name: Compile X88 tooling
+        run: python -m py_compile tools/x88/x88_build_controller.py tools/x88/android16_gate.py
 
-      - name: Controller unit tests
+      - name: X88 tooling unit tests
         working-directory: tools/x88
-        run: python -m unittest -v test_x88_build_controller.py
+        run: python -m unittest -v test_x88_build_controller.py test_android16_gate.py
+
+      - name: Android 16 runtime safety gate
+        run: python tools/x88/android16_gate.py --repo .
 
   android-build:
     runs-on: ubuntu-latest
