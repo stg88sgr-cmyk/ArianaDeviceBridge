@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
       - name: Checkout x88-evolution-g2 revision
@@ -122,53 +122,62 @@ jobs:
           set -euo pipefail
           $GRADLE_CMD :app:lintDebug --stacktrace
 
-      - name: Build assembleDebug
+      - name: Build all X-88 installation profiles
         working-directory: android
         shell: bash
         run: |
           set -euo pipefail
-          $GRADLE_CMD :app:assembleDebug --stacktrace
+          $GRADLE_CMD \
+            :app:assembleDebug \
+            :app:assembleSafeinstall \
+            :app:assembleBootstrap \
+            :app:assembleSideload \
+            --stacktrace
 
-      - name: Generate build evidence
+      - name: Collect APKs and generate SHA-256 evidence
         id: evidence
         shell: bash
         run: |
           set -euo pipefail
-          APK_PATH="$(find android/app/build/outputs/apk/debug -maxdepth 1 -type f -name '*.apk' | head -n 1)"
-          if [[ -z "$APK_PATH" || ! -f "$APK_PATH" ]]; then
-            echo "::error::Debug APK not found after successful assembleDebug."
-            exit 1
-          fi
+          OUT="x88-build-artifacts"
+          rm -rf "$OUT"
+          mkdir -p "$OUT"
 
-          EVIDENCE_DIR="android/app/build/outputs/apk/debug"
-          CANONICAL_APK="$EVIDENCE_DIR/app-debug.apk"
-          if [[ "$APK_PATH" != "$CANONICAL_APK" ]]; then
-            cp "$APK_PATH" "$CANONICAL_APK"
-          fi
+          collect() {
+            local profile="$1"
+            local dir="android/app/build/outputs/apk/$profile"
+            local apk
+            apk="$(find "$dir" -maxdepth 1 -type f -name '*.apk' | head -n 1)"
+            if [[ -z "$apk" || ! -f "$apk" ]]; then
+              echo "::error::APK missing for profile: $profile"
+              exit 1
+            fi
+            local dest="$OUT/x88-${profile}.apk"
+            cp "$apk" "$dest"
+            sha256sum "$dest" > "$dest.sha256"
+            echo "$profile => $dest"
+            ls -lh "$dest" "$dest.sha256"
+            cat "$dest.sha256"
+          }
 
-          SHA="$(sha256sum "$CANONICAL_APK" | awk '{print $1}')"
-          printf '%s  %s\n' "$SHA" "app-debug.apk" > "$CANONICAL_APK.sha256"
+          collect debug
+          collect safeinstall
+          collect bootstrap
+          collect sideload
 
-          echo "APK found: $CANONICAL_APK"
-          ls -lh "$CANONICAL_APK" "$CANONICAL_APK.sha256"
-          cat "$CANONICAL_APK.sha256"
-          echo "apk_path=$CANONICAL_APK" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          sha256sum --check "$OUT"/*.sha256
+          tar -czf x88-build-artifacts.tar.gz "$OUT"
+          BUNDLE_SHA="$(sha256sum x88-build-artifacts.tar.gz | awk '{print $1}')"
+          echo "bundle_sha256=$BUNDLE_SHA" >> "$GITHUB_OUTPUT"
+          echo "bundle_path=x88-build-artifacts.tar.gz" >> "$GITHUB_OUTPUT"
 
-      - name: Verify SHA-256 evidence
-        working-directory: android/app/build/outputs/apk/debug
-        shell: bash
-        run: |
-          set -euo pipefail
-          sha256sum --check app-debug.apk.sha256
-
-      - name: Upload APK + SHA256 artifact
+      - name: Upload consolidated X-88 APK bundle
         uses: actions/upload-artifact@v4
         with:
-          name: x88-evolution-g2-debug-apk
+          name: x88-evolution-g2-apk-bundle
           path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/debug/app-debug.apk.sha256
+            x88-build-artifacts/
+            x88-build-artifacts.tar.gz
           if-no-files-found: error
           retention-days: 14
 
@@ -177,15 +186,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo "### X-88 G2 Android CI"
+            echo "### X-88 G2 Consolidated Android CI"
             echo "- Result: ${{ job.status }}"
             echo "- Branch/ref: ${{ github.ref }}"
             echo "- Commit: ${{ github.sha }}"
             echo "- Java: 17 (Temurin)"
             echo "- Gradle: 8.11.1"
             echo "- Android SDK: 36"
-            echo "- NDK: 27.0.12077973"
-            echo "- CMake: 3.22.1"
-            echo "- APK: ${{ steps.evidence.outputs.apk_path }}"
-            echo "- SHA256: ${{ steps.evidence.outputs.sha256 }}"
+            echo "- Profiles: debug, safeinstall, bootstrap, sideload"
+            echo "- Bundle: ${{ steps.evidence.outputs.bundle_path }}"
+            echo "- Bundle SHA256: ${{ steps.evidence.outputs.bundle_sha256 }}"
           } >> "$GITHUB_STEP_SUMMARY"
