@@ -1,0 +1,60 @@
+name: V16-V20 Neuro Runtime Gate
+
+on:
+  push:
+    branches: [ x88-evolution-g2 ]
+    paths:
+      - 'android/app/src/main/java/de/snowworks/ariana/neuro/**'
+      - 'android/app/src/test/java/de/snowworks/ariana/neuro/**'
+      - '.github/workflows/neuro-runtime-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: neuro-runtime-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  neuro-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK 36
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+
+      - name: Install Gradle 8.11.1 directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --retry-delay 2 \
+            https://services.gradle.org/distributions/gradle-8.11.1-bin.zip \
+            -o /tmp/gradle.zip
+          unzip -q /tmp/gradle.zip -d "$HOME"
+          echo "$HOME/gradle-8.11.1/bin" >> "$GITHUB_PATH"
+
+      - name: Run V16-V20 tests
+        working-directory: android
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle :app:testDebugUnitTest \
+            --tests 'de.snowworks.ariana.neuro.V16ToV20NeuroRuntimeTest' \
+            --stacktrace
