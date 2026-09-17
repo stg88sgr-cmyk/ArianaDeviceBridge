@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <!--
+      Fail-closed baseline. Do not add privileged permissions until a concrete
+      X88 capability maps to a documented platform API and its threat model,
+      caller check, tests, and recovery path are reviewed.
+    -->
+    <privapp-permissions package="de.snowworks.app">
+    </privapp-permissions>
+</permissions>

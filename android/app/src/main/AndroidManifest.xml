@@ -15,6 +15,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
@@ -64,6 +65,14 @@
             android:exported="false" />
 
         <receiver
+            android:name="de.snowworks.ariana.system.X88BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".widget.ArianaPresenceWidgetProvider"
             android:exported="false"
             android:label="@string/widget_title">
@@ -75,8 +84,7 @@
 
         <service
             android:name="de.snowworks.ariana.system.X88CoreService"
-            android:exported="false"
-            android:stopWithTask="false" />
+            android:exported="false" />
 
         <service
             android:name=".widget.ArianaWakewordService"

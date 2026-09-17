@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reference framework-manifest fragment for an AOSP integration.
+  Merge into the platform manifest only in a controlled ROM build.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <permission
+        android:name="de.snowworks.permission.X88_SYSTEM_ACCESS"
+        android:protectionLevel="signature" />
+</manifest>
