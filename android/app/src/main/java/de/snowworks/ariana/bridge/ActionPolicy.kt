@@ -73,17 +73,21 @@ object ActionPolicy {
 
             ConfirmationRequirement.CONFIRM -> {
                 val reason = "VISIBLE_USER_CONFIRMATION_REQUIRED"
-                val pending = if (createPendingProposal) {
-                    ActionApprovalStore.createPending(action, reason)
+                if (createPendingProposal) {
+                    val pending = ActionApprovalStore.createPending(action, reason)
+                    Evaluation(
+                        action = action,
+                        decision = Decision.CONFIRM,
+                        reason = reason,
+                        pendingProposalId = pending.id,
+                    )
                 } else {
-                    null
+                    Evaluation(
+                        action = action,
+                        decision = Decision.CONFIRM,
+                        reason = reason,
+                    )
                 }
-                Evaluation(
-                    action = action,
-                    decision = Decision.CONFIRM,
-                    reason = reason,
-                    pendingProposalId = pending?.id,
-                )
             }
         }
     }
