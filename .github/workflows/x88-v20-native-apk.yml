@@ -12,6 +12,10 @@ on:
 permissions:
   contents: read
 
+env:
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,19 +25,28 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Verify preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --version
 
       - name: Install Android 36
         shell: bash
         run: |
+          set -euo pipefail
           yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+          test -d "$ANDROID_HOME/platforms/android-36"
+          test -x "$ANDROID_HOME/build-tools/36.0.0/apksigner"
 
       - name: Set up Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
@@ -45,6 +58,7 @@ jobs:
         working-directory: android
         run: |
           set -euo pipefail
+          gradle --version
           gradle --no-daemon --stacktrace :x88verify:assembleDebug
 
       - name: Verify APK
@@ -53,11 +67,12 @@ jobs:
           set -euo pipefail
           APK="android/x88verify/build/outputs/apk/debug/x88verify-debug.apk"
           test -s "$APK"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose "$APK"
           cp "$APK" ARIANA-X88-V20-debug.apk
           sha256sum ARIANA-X88-V20-debug.apk | tee ARIANA-X88-V20-debug.apk.sha256
           SHA=$(sha256sum ARIANA-X88-V20-debug.apk | awk '{print $1}')
           SIZE=$(stat -c '%s' ARIANA-X88-V20-debug.apk)
-          printf '{\n  "status": "SUCCESS",\n  "stage": "V20",\n  "artifact": "ARIANA-X88-V20-debug.apk",\n  "sha256": "%s",\n  "bytes": %s,\n  "build": ":x88verify:assembleDebug"\n}\n' "$SHA" "$SIZE" > ARIANA-X88-V20-build-proof.json
+          printf '{\n  "status": "SUCCESS",\n  "stage": "V20",\n  "artifact": "ARIANA-X88-V20-debug.apk",\n  "sha256": "%s",\n  "bytes": %s,\n  "build": ":x88verify:assembleDebug",\n  "signature_verified": true\n}\n' "$SHA" "$SIZE" > ARIANA-X88-V20-build-proof.json
 
       - name: Upload APK proof bundle
         uses: actions/upload-artifact@v4
