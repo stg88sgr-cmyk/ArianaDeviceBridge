@@ -13,6 +13,9 @@ object X88Runtime {
     @Volatile
     private var instance: X88SystemGateway? = null
 
+    @Volatile
+    private var genesisInstance: X88GenesisCode? = null
+
     fun gateway(context: Context): X88SystemGateway {
         instance?.let { return it }
         return synchronized(this) {
@@ -20,6 +23,20 @@ object X88Runtime {
                 delegate = InProcessX88SystemGateway(),
                 store = SharedPreferencesX88StateStore(context.applicationContext),
             ).also { instance = it }
+        }
+    }
+
+    /**
+     * Returns the process-wide Genesis reader bound to the exact same canonical
+     * gateway used by UI, bridge and device execution. Genesis is observational
+     * and never grants runtime authority.
+     */
+    fun genesis(context: Context): X88GenesisCode {
+        genesisInstance?.let { return it }
+        return synchronized(this) {
+            genesisInstance ?: X88GenesisCode(gateway(context)).also {
+                genesisInstance = it
+            }
         }
     }
 }
