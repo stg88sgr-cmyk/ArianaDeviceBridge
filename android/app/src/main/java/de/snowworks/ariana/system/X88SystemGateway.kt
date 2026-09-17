@@ -10,4 +10,5 @@ interface X88SystemGateway {
     fun emergencyStop(): X88CoreState
     fun clearEmergencyStop(): X88CoreState
     fun submit(command: X88Command): X88CommandResult
+    fun auditSnapshot(): List<X88AuditEvent>
 }
