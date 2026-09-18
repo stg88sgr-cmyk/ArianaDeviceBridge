@@ -17,5 +17,6 @@ credentials and Android permissions are not stored in the model.
 The runtime adapter emits MEMORY metadata only. It cannot emit or execute
 ACTION_REQUEST. Device actions remain behind the existing X88 SecurityChain.
 
-The next integration step is to register the trainer in the V16-V31 fabric and
-connect model snapshots to the existing persistence layer.
+The trainer is already registered as V32 in the running local neuro fabric.
+Model snapshots are exposed for the next persistence step; the current branch
+does not yet persist learned weights across process restarts.
