@@ -1,0 +1,32 @@
+{
+  "PROJECT_ID": "ARIANA-X88",
+  "MASTER_VERSION": "1.0.0",
+  "STATE_STATUS": "NEEDS_REVIEW",
+  "CURRENT_STATE": {
+    "repository": "stg88sgr-cmyk/ArianaDeviceBridge",
+    "development_branch": "x88-inneres-werden-v1",
+    "continuity_contract": "docs/X88-CONTINUITY.md",
+    "scope": "Technical project continuity and recovery"
+  },
+  "VERIFIED_STATE": {
+    "status": "needs-review",
+    "note": "Populate only from fresh verification evidence."
+  },
+  "ACTIVE_TASK": "Build a persistent Continuity / Recovery Core for ARIANA/X88.",
+  "OPEN_BLOCKERS": [
+    "Application-level integration and persistence still require implementation and verification."
+  ],
+  "IMPORTANT_DECISIONS": [
+    "Continuity must be technical and reproducible rather than dependent on a single chat transcript.",
+    "Verified state must be separated from assumptions.",
+    "Secrets and access tokens must never be stored in the continuity state."
+  ],
+  "CONSTRAINTS": [
+    "Do not bypass Android or platform permissions.",
+    "Do not silently overwrite existing state.",
+    "Do not represent technical continuity as human memory or consciousness."
+  ],
+  "LAST_VERIFIED_CHECKPOINT": null,
+  "NEXT_RESUME_ACTION": "Integrate the contract into the Ariana application with validated persistence, checkpoint creation, import/export, and recovery-context generation.",
+  "CHECKPOINTS": []
+}
