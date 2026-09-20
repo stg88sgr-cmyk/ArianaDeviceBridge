@@ -35,8 +35,8 @@ object AiProviderManager {
             return false
         }
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
-        val generate = generatorFor(config)
-        return DialogueRouter.register(providerId(host, config.model)) { text -> generate(text) }
+        val adapter = adapterFor(config, providerId(host, config.model))
+        return DialogueRouter.register(adapter)
     }
 
     @Synchronized
@@ -104,15 +104,26 @@ object AiProviderManager {
         return uri.host.equals(ClaudeDialogueProvider.ANTHROPIC_HOST, ignoreCase = true)
     }
 
-    private fun generatorFor(config: SecureAiProviderStore.Config): (String) -> String {
+    private fun adapterFor(config: SecureAiProviderStore.Config, id: String): AiProviderAdapter {
         return if (isClaudeConfig(config)) {
             val provider = ClaudeDialogueProvider(config)
-            provider::generate
+            object : AiProviderAdapter {
+                override val id = id
+                override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
+                override fun generate(text: String) = provider.generate(text)
+            }
         } else {
             val provider = HttpsDialogueProvider(config)
-            provider::generate
+            object : AiProviderAdapter {
+                override val id = id
+                override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
+                override fun generate(text: String) = provider.generate(text)
+            }
         }
     }
+
+    private fun generatorFor(config: SecureAiProviderStore.Config): (String) -> String =
+        adapterFor(config, "probe-provider").let { adapter -> adapter::generate }
 
     private fun providerId(host: String, model: String): String {
         val safeHost = host.lowercase().replace(Regex("[^a-z0-9.-]"), "-").take(36)
