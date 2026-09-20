@@ -113,10 +113,11 @@ class InneresWerdenModel(
         if (examples.isEmpty()) {
             return InneresWerdenTrainingReport(0, 0.0, null, false, steps)
         }
+
         val before = evaluate(examples)
-        var totalLoss = 0.0
-        examples.forEach { totalLoss += train(it) }
-        val after = totalLoss / examples.size
+        examples.forEach { train(it) }
+        val after = evaluate(examples)
+
         return InneresWerdenTrainingReport(
             examples = examples.size,
             averageLoss = after,
