@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { askAriana } from "../src/answer.js";
-import { addMemory, findRelevantMemories, getMemories, updateMemory } from "../src/memory.js";
+import {
+  addMemory,
+  findRelevantMemories,
+  getMemories,
+  loadMemories,
+  saveMemories,
+  updateMemory
+} from "../src/memory.js";
 
 test("answers Stefan question from stored memory", async () => {
   const answer = await askAriana("Was weißt du über Stefan?");
@@ -53,4 +63,21 @@ test("updates an existing memory without changing its id", () => {
   assert.equal(updated.id, "project-x88");
   assert.match(updated.content, /lokal/);
   assert.deepEqual(updated.tags, ["ariana", "x88", "lokal"]);
+});
+
+test("persists and reloads memories from JSON", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "ariana-memory-"));
+  const filePath = join(directory, "memories.json");
+
+  try {
+    await saveMemories(filePath);
+    const saved = JSON.parse(await readFile(filePath, "utf8"));
+    assert.ok(Array.isArray(saved));
+    assert.ok(saved.some(memory => memory.id === "project-x88"));
+
+    await loadMemories(filePath);
+    assert.equal(findRelevantMemories("X88")[0].id, "project-x88");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });
