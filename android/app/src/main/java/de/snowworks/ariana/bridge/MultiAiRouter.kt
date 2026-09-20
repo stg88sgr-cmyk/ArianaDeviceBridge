@@ -8,11 +8,10 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * Coordinates Ariana's active dialogue provider with the configured remote
- * OpenAI-compatible provider (for example Meta Model API / Muse Spark).
+ * Coordinates Ariana's active dialogue provider with an optional external reviewer.
  *
- * The active Ariana provider remains authoritative. The remote provider acts as
- * a second opinion for analysis, review, repair and consensus synthesis.
+ * The active Ariana provider remains authoritative. External providers are optional
+ * capability backends and are reached through the provider-neutral adapter boundary.
  */
 object MultiAiRouter {
     const val META_TIMEOUT_MS = 30_000L
@@ -68,7 +67,7 @@ object MultiAiRouter {
     }
 
     private fun askMeta(context: Context, text: String): Result {
-        val meta = callMeta(context, text)
+        val meta = callExternalReviewer(context, text)
         return Result(
             ok = meta.ok,
             mode = Mode.META,
@@ -236,7 +235,7 @@ object MultiAiRouter {
                     primaryProviderId = initial.providerId,
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    review = "REVIEW_UNAVAILABLE:${meta.error ?: "META_FAILED"}",
+                    review = "REVIEW_UNAVAILABLE:${meta.error ?: "EXTERNAL_REVIEWER_FAILED"}",
                     consensus = currentReply,
                     repairRounds = round,
                 )
@@ -337,16 +336,16 @@ object MultiAiRouter {
         )
     }
 
-    private fun callMeta(context: Context, text: String): RemoteOutcome {
+    private fun callExternalReviewer(context: Context, text: String): RemoteOutcome {
         val config = SecureAiProviderStore(context.applicationContext).load()
             ?: return RemoteOutcome(false, error = "META_NOT_CONFIGURED")
-        val providerId = remoteProviderId(config)
+        val provider = externalReviewerAdapter(config)\n        val providerId = provider.id
         if (!AiProviderHealth.acquireAttempt(providerId)) {
             return RemoteOutcome(false, providerId, error = "META_CIRCUIT_OPEN")
         }
 
         return try {
-            val reply = HttpsDialogueProvider(config).generate(text)
+            val reply = provider.generate(text)
             AiProviderHealth.recordSuccess(providerId)
             RemoteOutcome(true, providerId, reply)
         } catch (error: DialogueRouter.ProviderException) {
@@ -408,7 +407,7 @@ object MultiAiRouter {
     private fun mergeErrors(primary: String?, meta: String?): String =
         listOfNotNull(primary, meta).distinct().joinToString("+").ifBlank { "MULTI_AI_FAILED" }
 
-    private fun remoteProviderId(config: SecureAiProviderStore.Config): String {
+    fun externalReviewerProviderId(config: SecureAiProviderStore.Config): String {
         val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
             .lowercase().replace(Regex("[^a-z0-9.-]"), "-").take(36)
         val model = config.model.lowercase().replace(Regex("[^a-z0-9._-]"), "-").take(28)
