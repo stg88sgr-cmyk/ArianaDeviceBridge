@@ -6,6 +6,7 @@ import android.os.Bundle
 import de.snowworks.app.ui.HomeAiEngineIndicator
 import de.snowworks.app.ui.X88HomeActivity
 import de.snowworks.ariana.ArianaGate
+import de.snowworks.ariana.X88Identity
 import de.snowworks.ariana.bridge.AiProviderHealth
 import de.snowworks.ariana.bridge.AiProviderManager
 import de.snowworks.ariana.bridge.AiProviderRecoverySupervisor
@@ -23,6 +24,12 @@ import de.snowworks.ariana.world.X88FantasyWorldBootstrap
 class SnowworksApp : Application() {
     override fun onCreate() {
         super.onCreate()
+
+        // X-88 is the stable application-owned identity boundary. External AI providers
+        // remain capability backends and cannot redefine the application's identity.
+        val x88Identity = X88Identity.current
+        check(x88Identity.projectId == "ARIANA-X88")
+        check(x88Identity.identityId == "X-88")
 
         // Device capture sessions remain intentionally non-restorable after process death.
         SessionRegistry.clear()
