@@ -1,4 +1,6 @@
-let memories = [
+import { loadMemoryFile, saveMemoryFile } from "./memory-persistence.js";
+
+const defaultMemories = [
   {
     id: "identity-stefan-snow",
     content: "Name: Stefan oder Snow je nach Benehmen...",
@@ -9,6 +11,8 @@ let memories = [
   }
 ];
 
+let memories = defaultMemories.map(cloneMemory);
+
 function normalize(value) {
   return typeof value === "string"
     ? value.toLocaleLowerCase("de-DE").trim()
@@ -17,8 +21,8 @@ function normalize(value) {
 
 function tokenize(value) {
   return normalize(value)
-    .replace(/[^\\p{L}\\p{N}_-]+/gu, " ")
-    .split(/\\s+/)
+    .replace(/[^\p{L}\p{N}_-]+/gu, " ")
+    .split(/\s+/)
     .filter(Boolean);
 }
 
@@ -38,11 +42,41 @@ function cloneMemory(memory) {
   return { ...memory, tags: [...(memory.tags ?? [])] };
 }
 
+function normalizeLoadedMemories(value) {
+  if (!Array.isArray(value)) throw new TypeError("Memory file must contain an array");
+  return value.map(memory => {
+    if (!memory || typeof memory.content !== "string" || !memory.content.trim()) {
+      throw new TypeError("Every memory must have non-empty content");
+    }
+    return {
+      id: String(memory.id),
+      content: memory.content.trim(),
+      confidence: Number.isFinite(memory.confidence) ? memory.confidence : 0.5,
+      source: memory.source ?? "user",
+      type: memory.type ?? "general",
+      tags: Array.isArray(memory.tags) ? [...new Set(memory.tags.map(String))] : []
+    };
+  });
+}
+
+export async function loadMemories(filePath) {
+  const loaded = await loadMemoryFile(filePath);
+  memories = normalizeLoadedMemories(loaded);
+  return getMemories();
+}
+
+export async function saveMemories(filePath) {
+  await saveMemoryFile(filePath, memories.map(cloneMemory));
+}
+
 export function findRelevantMemories(question, limit = 5) {
   if (!normalize(question) || !Number.isInteger(limit) || limit <= 0) return [];
 
   return memories
-    .map(memory => ({ memory: cloneMemory(memory), relevance: scoreMemory(question, memory) }))
+    .map(memory => ({
+      memory: cloneMemory(memory),
+      relevance: scoreMemory(question, memory)
+    }))
     .filter(item => item.relevance > 0)
     .sort((a, b) => b.relevance - a.relevance || b.memory.confidence - a.memory.confidence)
     .slice(0, limit)
