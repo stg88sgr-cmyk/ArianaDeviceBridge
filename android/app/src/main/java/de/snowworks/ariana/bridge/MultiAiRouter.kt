@@ -33,9 +33,9 @@ object MultiAiRouter {
         val ok: Boolean,
         val mode: Mode,
         val primaryProviderId: String? = null,
-        val metaProviderId: String? = null,
+        val externalReviewerProviderId: String? = null,
         val primaryReply: String? = null,
-        val metaReply: String? = null,
+        val externalReviewerReply: String? = null,
         val review: String? = null,
         val consensus: String? = null,
         val judgeProviderId: String? = null,
@@ -45,6 +45,16 @@ object MultiAiRouter {
         val repairRounds: Int = 0,
         val error: String? = null,
     )
+
+    /** Backward-compatible alias for callers that still use the old field name. */
+    @Deprecated("Use externalReviewerProviderId")
+    val metaProviderId: String?
+        get() = externalReviewerProviderId
+
+    /** Backward-compatible alias for callers that still use the old field name. */
+    @Deprecated("Use externalReviewerReply")
+    val metaReply: String?
+        get() = externalReviewerReply
 
     private data class RemoteOutcome(
         val ok: Boolean,
@@ -75,8 +85,8 @@ object MultiAiRouter {
         return Result(
             ok = reviewer.ok,
             mode = Mode.EXTERNAL_REVIEWER,
-            metaProviderId = reviewer.providerId,
-            metaReply = reviewer.reply,
+            externalReviewerProviderId = reviewer.providerId,
+            externalReviewerReply = reviewer.reply,
             error = reviewer.error,
         )
     }
@@ -88,8 +98,8 @@ object MultiAiRouter {
                 ok = reviewer.ok,
                 mode = Mode.PARALLEL,
                 primaryProviderId = DialogueRouter.providerId(),
-                metaProviderId = reviewer.providerId,
-                metaReply = reviewer.reply,
+                externalReviewerProviderId = reviewer.providerId,
+                externalReviewerReply = reviewer.reply,
                 error = reviewer.error,
             )
         }
@@ -104,9 +114,9 @@ object MultiAiRouter {
             ok = ok,
             mode = Mode.PARALLEL,
             primaryProviderId = primary.providerId,
-            metaProviderId = reviewer.providerId,
+            externalReviewerProviderId = reviewer.providerId,
             primaryReply = primary.reply,
-            metaReply = reviewer.reply,
+            externalReviewerReply = reviewer.reply,
             error = if (ok) null else mergeErrors(primary.error, reviewer.error),
         )
     }
@@ -143,7 +153,7 @@ object MultiAiRouter {
             ok = reviewer.ok,
             mode = Mode.REVIEW,
             primaryProviderId = primary.providerId,
-            metaProviderId = reviewer.providerId,
+            externalReviewerProviderId = reviewer.providerId,
             primaryReply = primary.reply,
             review = reviewer.reply,
             error = reviewer.error,
@@ -159,8 +169,8 @@ object MultiAiRouter {
                 ok = true,
                 mode = Mode.CONSENSUS,
                 primaryProviderId = parallel.primaryProviderId,
-                metaProviderId = parallel.metaProviderId,
-                metaReply = parallel.metaReply,
+                externalReviewerProviderId = parallel.metaProviderId,
+                externalReviewerReply = parallel.metaReply,
                 consensus = parallel.metaReply,
             )
         }
@@ -177,16 +187,16 @@ object MultiAiRouter {
         val judge = MultiAiJudge.decide(
             task = text,
             primaryReply = parallel.primaryReply,
-            metaReply = parallel.metaReply,
+            externalReviewerReply = parallel.metaReply,
         )
         val consensus = judge.finalReply ?: parallel.primaryReply
         return Result(
             ok = consensus.isNotBlank(),
             mode = Mode.CONSENSUS,
             primaryProviderId = parallel.primaryProviderId,
-            metaProviderId = parallel.metaProviderId,
+            externalReviewerProviderId = parallel.metaProviderId,
             primaryReply = parallel.primaryReply,
-            metaReply = parallel.metaReply,
+            externalReviewerReply = parallel.metaReply,
             consensus = consensus,
             judgeProviderId = judge.judgeProviderId,
             judgeVerdict = judge.verdict,
@@ -237,7 +247,7 @@ object MultiAiRouter {
                     ok = true,
                     mode = Mode.REPAIR,
                     primaryProviderId = initial.providerId,
-                    metaProviderId = latestMetaProviderId,
+                    externalReviewerProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
                     review = "REVIEW_UNAVAILABLE:${reviewer.error ?: "EXTERNAL_REVIEWER_FAILED"}",
                     consensus = currentReply,
@@ -250,9 +260,9 @@ object MultiAiRouter {
                     ok = true,
                     mode = Mode.REPAIR,
                     primaryProviderId = initial.providerId,
-                    metaProviderId = latestMetaProviderId,
+                    externalReviewerProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = reviewerReply,
+                    externalReviewerReply = reviewerReply,
                     review = "REVIEW_FORMAT_INVALID",
                     consensus = currentReply,
                     repairRounds = round,
@@ -263,9 +273,9 @@ object MultiAiRouter {
                     ok = true,
                     mode = Mode.REPAIR,
                     primaryProviderId = initial.providerId,
-                    metaProviderId = latestMetaProviderId,
+                    externalReviewerProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = reviewerReply,
+                    externalReviewerReply = reviewerReply,
                     review = reviewerReply,
                     consensus = currentReply,
                     repairRounds = round,
@@ -286,9 +296,9 @@ object MultiAiRouter {
                     ok = fallback.isNotBlank(),
                     mode = Mode.REPAIR,
                     primaryProviderId = initial.providerId,
-                    metaProviderId = latestMetaProviderId,
+                    externalReviewerProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = parsed.candidate,
+                    externalReviewerReply = parsed.candidate,
                     review = reviewerReply,
                     consensus = fallback,
                     repairRounds = round,
@@ -304,16 +314,16 @@ object MultiAiRouter {
                     val judge = MultiAiJudge.decide(
                         task = text,
                         primaryReply = currentReply,
-                        metaReply = reviewerCandidate,
+                        externalReviewerReply = reviewerCandidate,
                     )
                     val finalReply = judge.finalReply ?: currentReply
                     return Result(
                         ok = finalReply.isNotBlank(),
                         mode = Mode.REPAIR,
                         primaryProviderId = revised.providerId ?: initial.providerId,
-                        metaProviderId = latestMetaProviderId,
+                        externalReviewerProviderId = latestMetaProviderId,
                         primaryReply = currentReply,
-                        metaReply = reviewerCandidate,
+                        externalReviewerReply = reviewerCandidate,
                         review = latestReview,
                         consensus = finalReply,
                         judgeProviderId = judge.judgeProviderId,
@@ -331,7 +341,7 @@ object MultiAiRouter {
             ok = currentReply.isNotBlank(),
             mode = Mode.REPAIR,
             primaryProviderId = initial.providerId,
-            metaProviderId = latestMetaProviderId,
+            externalReviewerProviderId = latestMetaProviderId,
             primaryReply = currentReply,
             review = latestReview,
             consensus = currentReply,

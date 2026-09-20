@@ -18,4 +18,20 @@ class ExternalReviewerAdapterTest {
             MultiAiRouter.externalReviewerProviderId(config),
         )
     }
+
+    @Test
+    fun resultExposesProviderNeutralReviewerFieldsWithLegacyAliases() {
+        val result = MultiAiRouter.Result(
+            ok = true,
+            mode = MultiAiRouter.Mode.EXTERNAL_REVIEWER,
+            externalReviewerProviderId = "https-ai:test:model",
+            externalReviewerReply = "review",
+        )
+
+        assertEquals("https-ai:test:model", result.externalReviewerProviderId)
+        assertEquals("review", result.externalReviewerReply)
+        assertEquals(result.externalReviewerProviderId, result.metaProviderId)
+        assertEquals(result.externalReviewerReply, result.metaReply)
+
+    }
 }
