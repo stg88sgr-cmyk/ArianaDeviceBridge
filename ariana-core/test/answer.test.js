@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { askAriana } from "../src/answer.js";
-import { findRelevantMemories, getMemories } from "../src/memory.js";
+import { addMemory, findRelevantMemories, getMemories, updateMemory } from "../src/memory.js";
 
 test("answers Stefan question from stored memory", async () => {
   const answer = await askAriana("Was weißt du über Stefan?");
@@ -28,4 +28,29 @@ test("returns defensive memory copies", () => {
 test("invalid limits return no results", () => {
   assert.deepEqual(findRelevantMemories("Stefan", 0), []);
   assert.deepEqual(findRelevantMemories("Stefan", -1), []);
+});
+
+test("adds a memory and makes it retrievable", () => {
+  const memory = addMemory({
+    id: "project-x88",
+    content: "Ariana gehört zum X88-Projekt.",
+    confidence: 0.95,
+    source: "user",
+    type: "project",
+    tags: ["ariana", "x88"]
+  });
+
+  assert.equal(memory.id, "project-x88");
+  assert.equal(findRelevantMemories("Was weißt du über X88?")[0].id, "project-x88");
+});
+
+test("updates an existing memory without changing its id", () => {
+  const updated = updateMemory("project-x88", {
+    content: "Ariana gehört zum X88-Projekt und soll lokal weiterentwickelt werden.",
+    tags: ["ariana", "x88", "lokal"]
+  });
+
+  assert.equal(updated.id, "project-x88");
+  assert.match(updated.content, /lokal/);
+  assert.deepEqual(updated.tags, ["ariana", "x88", "lokal"]);
 });
