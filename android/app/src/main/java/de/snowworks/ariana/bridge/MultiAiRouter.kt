@@ -71,7 +71,7 @@ object MultiAiRouter {
     }
 
     private fun askExternalReviewer(context: Context, text: String): Result {
-        val meta = callExternalReviewer(context, text)
+        val reviewer = callExternalReviewer(context, text)
         return Result(
             ok = reviewer.ok,
             mode = Mode.EXTERNAL_REVIEWER,
@@ -106,7 +106,7 @@ object MultiAiRouter {
             primaryProviderId = primary.providerId,
             metaProviderId = reviewer.providerId,
             primaryReply = primary.reply,
-            metaReply = meta.reply,
+            metaReply = reviewer.reply,
             error = if (ok) null else mergeErrors(primary.error, reviewer.error),
         )
     }
@@ -138,15 +138,15 @@ object MultiAiRouter {
             append("\nAriana-Antwort: ")
             append(primary.reply.take(620))
         }
-        val meta = callMeta(context, reviewPrompt)
+        val reviewer = callExternalReviewer(context, reviewPrompt)
         return Result(
-            ok = meta.ok,
+            ok = reviewer.ok,
             mode = Mode.REVIEW,
             primaryProviderId = primary.providerId,
-            metaProviderId = meta.providerId,
+            metaProviderId = reviewer.providerId,
             primaryReply = primary.reply,
             review = reviewer.reply,
-            error = meta.error,
+            error = reviewer.error,
         )
     }
 
@@ -227,7 +227,7 @@ object MultiAiRouter {
                 draft = currentReply,
                 round = round,
             )
-            val meta = callMeta(context, reviewPrompt)
+            val reviewer = callExternalReviewer(context, reviewPrompt)
             val reviewerReply = reviewer.reply?.takeIf { it.isNotBlank() }
             latestMetaProviderId = reviewer.providerId
             latestReview = reviewerReply
@@ -265,7 +265,7 @@ object MultiAiRouter {
                     primaryProviderId = initial.providerId,
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
-                    metaReply = metaReply,
+                    metaReply = reviewerReply,
                     review = reviewerReply,
                     consensus = currentReply,
                     repairRounds = round,
@@ -289,7 +289,7 @@ object MultiAiRouter {
                     metaProviderId = latestMetaProviderId,
                     primaryReply = currentReply,
                     metaReply = parsed.candidate,
-                    review = metaReply,
+                    review = reviewerReply,
                     consensus = fallback,
                     repairRounds = round,
                     error = if (fallback.isBlank()) revised.error ?: "REPAIR_FAILED" else null,
@@ -358,7 +358,7 @@ object MultiAiRouter {
             RemoteOutcome(false, providerId, error = error.code)
         } catch (_: Exception) {
             AiProviderHealth.recordFailure(providerId, "EXTERNAL_REVIEWER_PROVIDER_FAILED")
-            RemoteOutcome(false, providerId, error = "META_PROVIDER_FAILED")
+            RemoteOutcome(false, providerId, error = "EXTERNAL_REVIEWER_PROVIDER_FAILED")
         }
     }
 
@@ -397,7 +397,7 @@ object MultiAiRouter {
         } catch (error: ExecutionException) {
             future.cancel(true)
             val typed = error.cause as? DialogueRouter.ProviderException
-            RemoteOutcome(false, error = typed?.code ?: "META_PROVIDER_FAILED")
+            RemoteOutcome(false, error = typed?.code ?: "EXTERNAL_REVIEWER_PROVIDER_FAILED")
         } catch (_: Exception) {
             future.cancel(true)
             RemoteOutcome(false, error = "META_PROVIDER_FAILED")
