@@ -38,6 +38,20 @@ class InneresWerdenModelTest {
     }
 
     @Test
+    fun batchReportUsesPostTrainingLossAndSignalsImprovement() {
+        val model = InneresWerdenModel()
+        val examples = listOf(example(), example())
+        val report = model.trainBatch(examples)
+
+        assertEquals(2, report.examples)
+        assertEquals(2L, report.steps)
+        assertTrue(report.previousAverageLoss != null)
+        assertTrue(report.averageLoss < report.previousAverageLoss!!)
+        assertTrue(report.improved)
+        assertEquals(report.averageLoss, model.evaluate(examples), 0.0)
+    }
+
+    @Test
     fun trainerConsumesExplicitTargetsAndNeverEmitsActionRequests() = runTest {
         val trainer = InneresWerdenTrainer()
         val outputs = trainer.onSignal(
