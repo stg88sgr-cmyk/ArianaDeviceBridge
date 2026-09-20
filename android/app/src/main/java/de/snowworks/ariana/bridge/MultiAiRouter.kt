@@ -411,6 +411,6 @@ object MultiAiRouter {
         val host = runCatching { URI(config.endpoint).host }.getOrNull().orEmpty()
             .lowercase().replace(Regex("[^a-z0-9.-]"), "-").take(36)
         val model = config.model.lowercase().replace(Regex("[^a-z0-9._-]"), "-").take(28)
-        return "meta-ai:$host:$model".take(80)
+        return "https-ai:$host:$model".take(80)
     }
 }
