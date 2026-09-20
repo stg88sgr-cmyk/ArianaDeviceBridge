@@ -27,7 +27,7 @@ class MemoryBridgeTest {
         assertEquals("example-provider", item.source)
         assertEquals("hello X88", item.content)
         assertEquals(1234L, item.createdAtEpochMs)
-        assertTrue(item.metadata.containsKey(" topic "))
+        assertTrue(item.metadata.containsKey("topic"))
     }
 
     @Test
