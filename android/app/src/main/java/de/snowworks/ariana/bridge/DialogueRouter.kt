@@ -27,6 +27,14 @@ object DialogueRouter {
 
     fun initialize(context: Context) { appContext = context.applicationContext }
 
+    /**
+     * Provider-neutral registration boundary. Local, cloud and future providers
+     * enter the router through the same contract.
+     */
+    @Synchronized
+    fun register(adapter: AiProviderAdapter): Boolean =
+        register(adapter.id, adapter.timeoutMs, adapter::generate)
+
     @Synchronized
     fun register(providerId: String, timeoutMs: Long = PROVIDER_TIMEOUT_MS, generator: Generator): Boolean {
         val id = providerId.trim().take(80)
