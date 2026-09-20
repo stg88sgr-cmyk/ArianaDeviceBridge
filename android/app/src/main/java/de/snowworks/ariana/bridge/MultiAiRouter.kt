@@ -400,7 +400,7 @@ object MultiAiRouter {
             RemoteOutcome(false, error = typed?.code ?: "EXTERNAL_REVIEWER_PROVIDER_FAILED")
         } catch (_: Exception) {
             future.cancel(true)
-            RemoteOutcome(false, error = "META_PROVIDER_FAILED")
+            RemoteOutcome(false, error = "EXTERNAL_REVIEWER_PROVIDER_FAILED")
         }
 
     private fun sanitize(rawText: String): String = rawText
