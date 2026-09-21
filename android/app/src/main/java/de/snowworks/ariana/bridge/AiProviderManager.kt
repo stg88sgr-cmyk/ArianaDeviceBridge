@@ -4,6 +4,12 @@ import android.content.Context
 import java.net.URI
 
 object AiProviderManager {
+    fun registry() = DialogueRouter.registry()
+
+    @Synchronized
+    fun registerAdapter(adapter: AiProviderAdapter, local: Boolean): Boolean =
+        DialogueRouter.registerAdapter(adapter, local)
+
     data class Status(
         val configured: Boolean,
         val active: Boolean,
@@ -35,8 +41,13 @@ object AiProviderManager {
             return false
         }
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
-        val generate = generatorFor(config)
-        return DialogueRouter.register(providerId(host, config.model)) { text -> generate(text) }
+        val generator = generatorFor(config)
+        val adapter = object : AiProviderAdapter {
+            override val id = providerId(host, config.model)
+            override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
+            override fun generate(text: String): String = generator(text)
+        }
+        return registerAdapter(adapter, local = false)
     }
 
     @Synchronized

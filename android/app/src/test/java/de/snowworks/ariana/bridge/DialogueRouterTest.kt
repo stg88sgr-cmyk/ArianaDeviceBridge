@@ -81,4 +81,36 @@ class DialogueRouterTest {
         assertEquals("INVALID_INPUT", outcome.error)
         assertFalse(called)
     }
+    @Test
+    fun registryPrefersLocalAdapterOverRemoteFallback() {
+        val remote = object : AiProviderAdapter {
+            override val id = "https-ai:test"
+            override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
+            override fun generate(text: String) = "remote"
+        }
+        val local = object : AiProviderAdapter {
+            override val id = "local-ai:test"
+            override val timeoutMs = DialogueRouter.LOCAL_PROVIDER_TIMEOUT_MS
+            override fun generate(text: String) = "local"
+        }
+
+        assertTrue(DialogueRouter.registerAdapter(remote, local = false))
+        assertTrue(DialogueRouter.registerAdapter(local, local = true))
+
+        val outcome = DialogueRouter.generate("Test")
+
+        assertTrue(outcome.ok)
+        assertEquals("local-ai:test", outcome.providerId)
+        assertEquals("local", outcome.reply)
+        assertEquals("local-ai:test", DialogueRouter.registry().preferredBackend(
+            de.snowworks.ariana.orchestration.X88Capability.LOCAL_DIALOGUE,
+        )?.id)
+
+        DialogueRouter.unregister("local-ai:test")
+        val fallback = DialogueRouter.generate("Test")
+        assertTrue(fallback.ok)
+        assertEquals("https-ai:test", fallback.providerId)
+        assertEquals("remote", fallback.reply)
+        DialogueRouter.unregister("https-ai:test")
+    }
 }

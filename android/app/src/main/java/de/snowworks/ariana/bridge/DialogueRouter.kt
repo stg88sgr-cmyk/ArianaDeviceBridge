@@ -1,6 +1,9 @@
 package de.snowworks.ariana.bridge
 
 import android.content.Context
+import de.snowworks.ariana.orchestration.X88Backend
+import de.snowworks.ariana.orchestration.X88BackendRegistry
+import de.snowworks.ariana.orchestration.X88Capability
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -22,10 +25,27 @@ object DialogueRouter {
     private data class MultiAiCommand(val mode: MultiAiRouter.Mode, val text: String)
 
     private val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ArianaDialogueProvider").apply { isDaemon = true } }
+    private val adapters = linkedMapOf<String, AiProviderAdapter>()
+    private val localAdapterIds = mutableSetOf<String>()
+    @Volatile private var backendRegistry = X88BackendRegistry()
     @Volatile private var provider: Provider? = null
     @Volatile private var appContext: Context? = null
 
     fun initialize(context: Context) { appContext = context.applicationContext }
+
+    @Synchronized
+    fun registerAdapter(adapter: AiProviderAdapter, local: Boolean): Boolean {
+        val id = adapter.id.trim().take(80)
+        if (!id.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
+        if (adapter.timeoutMs !in 1_000L..180_000L) return false
+        adapters[id] = adapter
+        if (local) localAdapterIds.add(id) else localAdapterIds.remove(id)
+        rebuildBackendRegistry()
+        provider = Provider(id, adapter::generate, adapter.timeoutMs)
+        return true
+    }
+
+    fun registry(): X88BackendRegistry = backendRegistry
 
     @Synchronized
     fun register(providerId: String, timeoutMs: Long = PROVIDER_TIMEOUT_MS, generator: Generator): Boolean {
@@ -36,7 +56,21 @@ object DialogueRouter {
         return true
     }
 
-    @Synchronized fun unregister() { provider = null }
+    @Synchronized fun unregister(providerId: String) {
+        adapters.remove(providerId)
+        localAdapterIds.remove(providerId)
+        if (provider?.id == providerId) provider = null
+        rebuildBackendRegistry()
+    }
+
+    @Synchronized fun unregister() {
+        provider?.id?.let { id ->
+            adapters.remove(id)
+            localAdapterIds.remove(id)
+        }
+        provider = null
+        rebuildBackendRegistry()
+    }
     fun providerId(): String? = provider?.id
 
     fun generate(rawText: String): Outcome {
@@ -68,7 +102,10 @@ object DialogueRouter {
     internal fun generateActiveProvider(rawText: String): Outcome {
         val text = sanitize(rawText)
         if (text.isEmpty()) return Outcome(false, error = "INVALID_INPUT")
-        val current = provider ?: return Outcome(false, error = "PROVIDER_UNAVAILABLE")
+        val selected = backendRegistry.preferredBackend(X88Capability.LOCAL_DIALOGUE)
+        val adapter = selected?.let { adapters[it.id] }
+        val current = adapter?.let { Provider(it.id, it::generate, it.timeoutMs) } ?: provider
+            ?: return Outcome(false, error = "PROVIDER_UNAVAILABLE")
         val future = executor.submit<String> { current.generator.generate(text) }
         return try {
             val reply = future.get(current.timeoutMs, TimeUnit.MILLISECONDS)
@@ -82,6 +119,18 @@ object DialogueRouter {
         } catch (_: Exception) {
             future.cancel(true); Outcome(false, current.id, error = "PROVIDER_FAILED")
         }
+    }
+
+    private fun rebuildBackendRegistry() {
+        backendRegistry = X88BackendRegistry(
+            adapters.values.map { adapter ->
+                X88Backend(
+                    id = adapter.id,
+                    capability = X88Capability.LOCAL_DIALOGUE,
+                    local = localAdapterIds.contains(adapter.id),
+                )
+            },
+        )
     }
 
     private fun parseMultiAiCommand(rawText: String): MultiAiCommand? {
