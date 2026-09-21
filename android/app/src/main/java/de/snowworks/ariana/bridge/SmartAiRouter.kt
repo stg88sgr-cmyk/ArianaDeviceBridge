@@ -140,7 +140,9 @@ object SmartAiRouter {
         fallback: Boolean = false,
         fallbackReason: String? = null,
     ): Result {
-        val outcome = DialogueRouter.generateActiveProvider(text)
+        val outcome = DialogueRouter.durableMemoryAccess()?.let { memory ->
+            DialogueRouter.generateActiveProviderWithMemory(text, memory)
+        } ?: DialogueRouter.generateActiveProvider(text)
         return Result(
             ok = outcome.ok,
             taskClass = taskClass,
