@@ -24,8 +24,21 @@ object DialogueRouter {
     private val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ArianaDialogueProvider").apply { isDaemon = true } }
     @Volatile private var provider: Provider? = null
     @Volatile private var appContext: Context? = null
+    @Volatile private var memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess? = null
 
-    fun initialize(context: Context) { appContext = context.applicationContext }
+    fun initialize(context: Context) {
+        val app = context.applicationContext
+        appContext = app
+        memoryAccess = de.snowworks.ariana.memory.ArianaX88MemoryAccess(
+            de.snowworks.ariana.memory.X88MemoryRepository(
+                de.snowworks.ariana.memory.DefaultX88MemoryBridge(),
+                de.snowworks.ariana.memory.SharedPreferencesX88MemoryStore(app),
+            )
+        )
+    }
+
+    internal fun applicationContext(): Context? = appContext
+    internal fun durableMemoryAccess(): de.snowworks.ariana.memory.ArianaX88MemoryAccess? = memoryAccess
 
     @Synchronized
     fun register(providerId: String, timeoutMs: Long = PROVIDER_TIMEOUT_MS, generator: Generator): Boolean {
