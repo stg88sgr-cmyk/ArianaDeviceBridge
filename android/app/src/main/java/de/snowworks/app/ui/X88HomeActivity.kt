@@ -55,6 +55,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     private lateinit var api: ArianaDeviceApi
     private lateinit var voice: ArianaVoiceController
     private lateinit var avatar: X88AvatarView
+    private lateinit var avatarRuntime: X88AvatarRuntime
     private lateinit var masterButton: MaterialButton
     private lateinit var cameraButton: MaterialButton
     private lateinit var microphoneButton: MaterialButton
@@ -300,6 +301,9 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         root.addView(label("Build ${BuildConfig.VERSION_NAME} · ${BuildConfig.APPLICATION_ID}", 11f, "#6F8799"))
 
         avatar = X88AvatarView(this)
+        avatarRuntime = X88AvatarRuntime(avatar) { event ->
+            X88EventJournal.add("avatar_event", event.name.lowercase())
+        }
         root.addView(avatar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(310)))
 
         statusView = label("Status wird gelesen …", 13f, "#25D9FF")
@@ -374,7 +378,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             stopConversation("stop_all")
             api.stopAll()
             X88EventJournal.add("stop_all", "button")
-            avatar.mode = X88AvatarView.Mode.STOPPED
+            avatarRuntime.dispatch(X88AvatarEvent.STOP_ALL)
             showReply("Alles gestoppt. Gerätezugriff ist jetzt blockiert.", false)
             refreshStatus()
         }.apply {
@@ -422,7 +426,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             .setPositiveButton("Einschalten") { _, _ ->
                 api.setMasterEnabled(true)
                 X88EventJournal.add("master_on", "confirmed")
-                avatar.mode = X88AvatarView.Mode.IDLE
+                avatarRuntime.dispatch(X88AvatarEvent.RESET)
                 showReply("Lokaler Gerätezugriff aktiviert.", true)
                 refreshStatus()
             }
@@ -587,7 +591,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         voice.cancelListening()
         if (::conversationButton.isInitialized) conversationButton.text = conversationLabel()
         setDialogState("DIALOG · READY")
-        if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
+        if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.RESET)
         if (wasActive) X88EventJournal.add("conversation", "stop:$source")
         resumeWakewordIfIdle()
     }
@@ -645,11 +649,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
     override fun onState(message: String) {
         runOnUiThread {
             statusView.text = "VOICE · $message"
-            avatar.mode = when {
-                message.contains("höre", true) || message.contains("sprich", true) -> X88AvatarView.Mode.LISTENING
-                message.contains("verarbeite", true) -> X88AvatarView.Mode.THINKING
-                else -> avatar.mode
-            }
+            avatarRuntime.syncVoiceState(message)
         }
     }
 
@@ -657,7 +657,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         runOnUiThread {
             transcriptView.text = "Du: $text"
             replyView.text = "Ariana: …"
-            avatar.mode = X88AvatarView.Mode.THINKING
+            avatarRuntime.dispatch(X88AvatarEvent.AI_PROCESSING)
         }
         val intent = X88VoiceIntentRouter.classify(text)
         X88EventJournal.add("voice_intent", intent.name.lowercase())
@@ -673,7 +673,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 stopConversation("stop_all")
                 api.stopAll()
                 X88EventJournal.add("stop_all", "voice")
-                avatar.mode = X88AvatarView.Mode.STOPPED
+                avatarRuntime.dispatch(X88AvatarEvent.STOP_ALL)
                 showReply("Alles gestoppt.", false)
                 refreshStatus()
             }
@@ -751,7 +751,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         textInput.text.clear()
         transcriptView.text = "Du: $text"
         replyView.text = "Ariana: …"
-        avatar.mode = X88AvatarView.Mode.THINKING
+        avatarRuntime.dispatch(X88AvatarEvent.AI_PROCESSING)
         setDialogState("DIALOG · DENKT")
         X88EventJournal.add("text_dialogue")
         requestDialogue(text, speak = false)
@@ -762,7 +762,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
             runOnUiThread {
                 if (conversationActive) stopConversation("provider_unavailable")
                 setDialogState("DIALOG · OFFLINE")
-                if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.ATTENTION
+                if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.PROVIDER_ERROR)
                 showReply("Die lokale Sprache läuft. Für freie Antworten ist noch kein KI-Provider aktiv.", true)
             }
             return
@@ -783,7 +783,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 } else {
                     if (conversationActive) stopConversation("dialogue_error")
                     setDialogState("DIALOG · FEHLER")
-                    if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.ATTENTION
+                    if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.PROVIDER_ERROR)
                     showReply("Dialogfehler: ${outcome.error ?: "unbekannt"}", false)
                 }
             }
@@ -792,7 +792,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onSpeechStarted() {
         runOnUiThread {
-            if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.SPEAKING
+            if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.TTS_STARTED)
             setDialogState("DIALOG · SPRICHT")
             X88EventJournal.add("tts_start")
         }
@@ -800,7 +800,7 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
 
     override fun onSpeechFinished() {
         runOnUiThread {
-            if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.IDLE
+            if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.RESET)
             setDialogState("DIALOG · READY")
             X88EventJournal.add("tts_done")
             if (conversationActive) {
@@ -819,13 +819,13 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
                 X88EventJournal.add("conversation_rearm", "idle")
                 statusView.text = "VOICE · Warte auf dich …"
                 setDialogState("DIALOG · HÖRT ZU")
-                if (!api.isBlocked()) avatar.mode = X88AvatarView.Mode.LISTENING
+                if (!api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.USER_STARTED_SPEAKING)
                 dialogStateView.postDelayed({ startConversationListening() }, 350L)
                 return@runOnUiThread
             }
             if (conversationActive) stopConversation("voice_error")
             else resumeWakewordIfIdle()
-            avatar.mode = X88AvatarView.Mode.ATTENTION
+            avatarRuntime.dispatch(X88AvatarEvent.PROVIDER_ERROR)
             statusView.text = "VOICE · Fehler"
             replyView.text = "Ariana: $message"
             Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
@@ -871,8 +871,8 @@ class X88HomeActivity : AppCompatActivity(), ArianaVoiceController.Listener {
         val bluetooth = api.getStatus(Feature.BLUETOOTH)
         val treeSelected = TreePermissionStore(this).get() != null
         modulesView.text = "MODULES · NOTIFY ${ok(notify.permissionGranted)} (${NotificationStore.listRecent().size}) · FILES ${ok(files.permissionGranted || treeSelected)} · LOC ${ok(location.permissionGranted)} · BT ${ok(bluetooth.permissionGranted)} · PRESENCE ${PresenceSignalController.currentState()}"
-        if (api.isBlocked()) avatar.mode = X88AvatarView.Mode.STOPPED
-        else if (avatar.mode == X88AvatarView.Mode.STOPPED) avatar.mode = X88AvatarView.Mode.IDLE
+        if (api.isBlocked()) avatarRuntime.dispatch(X88AvatarEvent.STOP_ALL)
+        else if (avatarRuntime.state == X88AvatarState.STOPPED) avatarRuntime.dispatch(X88AvatarEvent.RESET)
     }
 
     private fun row(left: MaterialButton, right: MaterialButton): LinearLayout = LinearLayout(this).apply {
