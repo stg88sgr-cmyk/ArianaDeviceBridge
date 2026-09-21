@@ -128,6 +128,7 @@ object LocalBridgeServer {
         val result = when {
             path == "/v1/session" && method == "POST" -> exchangeDialogueSession(body, headers)
             path == "/v1/dialogue" && method == "POST" -> dialogue(context, body, headers)
+            path == "/v1/device/state" && method == "GET" -> readOnlyDeviceState(context, headers)
             path == "/v1/action/proposal" && method == "POST" -> actionProposal(context, body, headers)
             path.startsWith("/v1/") -> HttpResult(404, error("NOT_FOUND", "Unbekannter X-88-Endpunkt."))
             headers["x-ariana-token"] != token -> HttpResult(
@@ -243,6 +244,24 @@ object LocalBridgeServer {
                 .put("model", "x88-loopback-dialogue-response-v1")
                 .put("providerId", outcome.providerId)
                 .put("reply", outcome.reply),
+        )
+    }
+
+    private fun readOnlyDeviceState(context: Context, headers: Map<String, String>): HttpResult {
+        val requestId = UUID.randomUUID().toString()
+        if (!DialogueSessionStore.validateBearer(headers["authorization"])) {
+            return HttpResult(
+                401,
+                error("X88_SESSION_UNAUTHORIZED", "X-88 Session-Token fehlt oder ist abgelaufen.", requestId),
+            )
+        }
+
+        return HttpResult(
+            200,
+            ReadOnlyDeviceState.snapshot(context)
+                .put("ok", true)
+                .put("requestId", requestId)
+                .put("model", "x88-device-state-v1"),
         )
     }
 
