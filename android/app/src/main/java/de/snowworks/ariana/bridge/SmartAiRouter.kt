@@ -59,6 +59,7 @@ object SmartAiRouter {
                 originalText = text,
                 taskClass = taskClass,
                 cloudClassification = policy.classification,
+                cloudClassification = policy.classification,
             )
             TaskClass.SECOND_OPINION -> callMetaClaudeLocal(
                 context = context.applicationContext,
@@ -114,6 +115,7 @@ object SmartAiRouter {
         cloudText: String,
         originalText: String,
         taskClass: TaskClass,
+        cloudClassification: CloudAiPolicy.Classification,
     ): Result {
         var reason: String? = null
         val meta = registry.load(CloudProviderRegistry.Slot.META)
