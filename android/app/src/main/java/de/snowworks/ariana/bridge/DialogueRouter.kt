@@ -84,6 +84,13 @@ object DialogueRouter {
         }
     }
 
+    internal fun generateActiveProviderWithMemory(
+        rawText: String,
+        memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
+        project: String? = null,
+        topic: String? = null,
+    ): Outcome = generateWithMemory(rawText, memoryAccess, project, topic)
+
     fun generateWithMemory(
         rawText: String,
         memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
