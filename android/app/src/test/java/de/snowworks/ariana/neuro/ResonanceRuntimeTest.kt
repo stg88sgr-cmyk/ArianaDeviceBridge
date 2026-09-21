@@ -1,7 +1,8 @@
 package de.snowworks.ariana.neuro
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 
 class ResonanceRuntimeTest {
     @Test
@@ -35,10 +36,10 @@ class ResonanceRuntimeTest {
             correctionSignal = -0.2,
         )
 
-        assertEquals(0.8, state.coherence)
-        assertEquals(0.6, state.growth)
-        assertEquals(-0.2, state.correction)
-        assertEquals(0.9, state.stability)
+        assertEquals(0.8, state.coherence, 0.000001)
+        assertEquals(0.6, state.growth, 0.000001)
+        assertEquals(-0.2, state.correction, 0.000001)
+        assertEquals(0.9, state.stability, 0.000001)
         assertEquals(state, runtime.current())
     }
 }

@@ -1,5 +1,7 @@
 package de.snowworks.app.ui
 
+import de.snowworks.ariana.neuro.ResonanceState
+
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
@@ -47,6 +49,21 @@ class X88AvatarView @JvmOverloads constructor(
             field = value
             invalidate()
         }
+
+    @Volatile
+    private var resonanceState: ResonanceState = ResonanceState(0.0, 0.0, 0.0, 0.0)
+
+    /**
+     * Feeds the local symbolic resonance state into the visual runtime.
+     * Values remain bounded and visual-only: no permissions, network calls or
+     * external model dependencies are introduced by this adapter.
+     */
+    fun setResonanceState(state: ResonanceState) {
+        resonanceState = state
+        invalidate()
+    }
+
+    fun resonanceState(): ResonanceState = resonanceState
 
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
@@ -110,8 +127,13 @@ class X88AvatarView @JvmOverloads constructor(
             Mode.STOPPED -> 0.02f
         }
         val energy = (sin(t * 2f * PI.toFloat() * energyHz) + 1f) / 2f
-        val corePulse = 1f + energyAmp * energy
-        val outerRadius = w.coerceAtMost(h) * 0.435f * pulse
+        val resonance = resonanceState
+        val resonanceEnergy = (
+            (resonance.coherence + resonance.growth + resonance.stability) / 3.0
+        ).coerceIn(0.0, 1.0).toFloat()
+        val correctionPressure = kotlin.math.abs(resonance.correction).coerceIn(0.0, 1.0).toFloat()
+        val corePulse = 1f + energyAmp * energy + resonanceEnergy * 0.08f + correctionPressure * 0.025f
+        val outerRadius = w.coerceAtMost(h) * 0.435f * pulse * (1f + resonanceEnergy * 0.025f)
 
         paint.style = Paint.Style.FILL
         paint.color = withAlpha(modeColor, 24)
@@ -398,11 +420,11 @@ class X88AvatarView @JvmOverloads constructor(
 
         paint.style = Paint.Style.STROKE
         paint.strokeWidth = dp(1.6f)
-        paint.color = if (mode == Mode.STOPPED) red else gold
+        paint.color = if (mode == Mode.STOPPED || correctionPressure > 0.65f) red else gold
         canvas.drawCircle(cx, h * 0.83f, w * 0.029f * corePulse, paint)
 
         paint.strokeWidth = dp(0.8f)
-        paint.color = withAlpha(magenta, 130)
+        paint.color = withAlpha(magenta, (110 + (resonanceEnergy * 90f).toInt()).coerceIn(0, 255))
         canvas.drawCircle(cx, h * 0.83f, w * 0.020f * corePulse, paint)
 
         if (mode == Mode.THINKING) {
