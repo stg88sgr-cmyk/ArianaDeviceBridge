@@ -15,6 +15,7 @@ class AppPrompterEngineTest {
         assertTrue(result.features.any { it.contains("Notizen", ignoreCase = true) })
         assertTrue(result.html.contains("<title>Luna Notes</title>"))
         assertTrue(result.html.contains("Notizen"))
+        assertTrue(result.html.contains("Dunkles Design"))
     }
 
     @Test
