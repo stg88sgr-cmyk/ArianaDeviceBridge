@@ -58,6 +58,7 @@ object SmartAiRouter {
                 cloudText = policy.text,
                 originalText = text,
                 taskClass = taskClass,
+                cloudClassification = policy.classification,
             )
             TaskClass.SECOND_OPINION -> callMetaClaudeLocal(
                 context = context.applicationContext,
@@ -65,6 +66,7 @@ object SmartAiRouter {
                 cloudText = policy.text,
                 originalText = text,
                 taskClass = taskClass,
+                cloudClassification = policy.classification,
             )
             TaskClass.GENERAL -> callLocal(text, taskClass)
         }
@@ -82,6 +84,7 @@ object SmartAiRouter {
         cloudText: String,
         originalText: String,
         taskClass: TaskClass,
+        cloudClassification: CloudAiPolicy.Classification,
     ): Result {
         var reason: String? = null
         val claude = registry.load(CloudProviderRegistry.Slot.CLAUDE)
@@ -95,7 +98,7 @@ object SmartAiRouter {
 
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
-            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = true)
+            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = true, cloudClassification = cloudClassification)
             if (result.ok) return result.copy(fallbackUsed = true, fallbackReason = reason)
             reason = appendReason(reason, result.error ?: "META_FAILED")
         } else {
@@ -115,7 +118,7 @@ object SmartAiRouter {
         var reason: String? = null
         val meta = registry.load(CloudProviderRegistry.Slot.META)
         if (meta != null) {
-            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = false)
+            val result = callMeta(context, meta, cloudText, taskClass, fallbackAttempt = false, cloudClassification = cloudClassification)
             if (result.ok) return result
             reason = appendReason(reason, result.error ?: "META_FAILED")
         } else {
@@ -187,25 +190,71 @@ object SmartAiRouter {
         text: String,
         taskClass: TaskClass,
         fallbackAttempt: Boolean,
+        cloudClassification: CloudAiPolicy.Classification,
     ): Result {
         val providerId = providerId("meta", config)
+        val consent = X88ConsentManager(context).evaluateCloudPolicy(cloudClassification, providerId)
+        val log = X88TransparencyLog(context)
+        if (consent == X88ConsentManager.ConsentDecision.DENY) {
+            log.record(
+                X88TransparencyLog.Entry(
+                    providerId = providerId,
+                    dataClass = cloudClassification.name,
+                    consent = consent.name,
+                    ok = false,
+                    latencyMs = 0L,
+                    errorCode = "X88_CONSENT_DENIED",
+                ),
+            )
+            return Result(false, taskClass, providerId = providerId, error = "X88_CONSENT_DENIED")
+        }
         AiProviderQualityStore.recordSelection(context, AiProviderQualityStore.Engine.META, fallbackAttempt)
         if (!AiProviderHealth.acquireAttempt(providerId)) {
             AiProviderQualityStore.recordCircuitRejected(context, AiProviderQualityStore.Engine.META)
             return Result(false, taskClass, providerId = providerId, error = "META_CIRCUIT_OPEN")
         }
+        val startedAt = System.nanoTime()
         return try {
             val reply = HttpsDialogueProvider(config).generate(text)
             AiProviderHealth.recordSuccess(providerId)
             AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = true)
+            log.record(
+                X88TransparencyLog.Entry(
+                    providerId = providerId,
+                    dataClass = cloudClassification.name,
+                    consent = consent.name,
+                    ok = true,
+                    latencyMs = (System.nanoTime() - startedAt) / 1_000_000L,
+                ),
+            )
             Result(true, taskClass, providerId = providerId, reply = reply)
         } catch (error: DialogueRouter.ProviderException) {
             AiProviderHealth.recordFailure(providerId, error.code)
             AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = false)
+            log.record(
+                X88TransparencyLog.Entry(
+                    providerId = providerId,
+                    dataClass = cloudClassification.name,
+                    consent = consent.name,
+                    ok = false,
+                    latencyMs = (System.nanoTime() - startedAt) / 1_000_000L,
+                    errorCode = error.code,
+                ),
+            )
             Result(false, taskClass, providerId = providerId, error = error.code)
         } catch (_: Exception) {
             AiProviderHealth.recordFailure(providerId, "META_PROVIDER_FAILED")
             AiProviderQualityStore.recordExecuted(context, AiProviderQualityStore.Engine.META, ok = false)
+            log.record(
+                X88TransparencyLog.Entry(
+                    providerId = providerId,
+                    dataClass = cloudClassification.name,
+                    consent = consent.name,
+                    ok = false,
+                    latencyMs = (System.nanoTime() - startedAt) / 1_000_000L,
+                    errorCode = "META_PROVIDER_FAILED",
+                ),
+            )
             Result(false, taskClass, providerId = providerId, error = "META_PROVIDER_FAILED")
         }
     }
