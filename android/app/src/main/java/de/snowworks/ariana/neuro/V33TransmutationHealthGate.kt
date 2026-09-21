@@ -1,13 +1,13 @@
 package de.snowworks.ariana.neuro
 
-data class V33TransmutationHealthGate(
+data class V33TransmutationHealthCheck(
     val allowed: Boolean,
     val reasons: List<String>,
 )
 
 object V33TransmutationHealthGate {
 
-    fun check(snapshot: V32InneresWerdenSnapshot): V33TransmutationHealthGate {
+    fun check(snapshot: V32InneresWerdenSnapshot): V33TransmutationHealthCheck {
         val reasons = buildList {
             if (snapshot.stage != 32) add("V32_STAGE_MISMATCH")
             if (snapshot.runtimeVersion != 32) add("V32_RUNTIME_VERSION_MISMATCH")
@@ -27,7 +27,7 @@ object V33TransmutationHealthGate {
             }
         }
 
-        return V33TransmutationHealthGate(
+        return V33TransmutationHealthCheck(
             allowed = reasons.isEmpty(),
             reasons = reasons,
         )
