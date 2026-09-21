@@ -57,7 +57,14 @@ data class InneresWerdenModelSnapshot(
     val l2: Double,
     val steps: Long,
 ) {
-    init { require(weights.size == FEATURE_COUNT) }
+    init {
+        require(weights.size == FEATURE_COUNT)
+        require(weights.all { it.isFinite() })
+        require(bias.isFinite())
+        require(learningRate.isFinite() && learningRate > 0.0)
+        require(l2.isFinite() && l2 >= 0.0)
+        require(steps >= 0)
+    }
 
     companion object {
         const val FEATURE_COUNT = 5
@@ -164,6 +171,7 @@ class InneresWerdenModel(
 
 class InneresWerdenTrainer(
     private val model: InneresWerdenModel = InneresWerdenModel(),
+    private val snapshotStore: InneresWerdenSnapshotStore? = null,
 ) : NeuroModule {
     override val id = "inneres-werden-trainer"
     override val inputs = setOf(
@@ -174,6 +182,10 @@ class InneresWerdenTrainer(
         NeuroChannel.INTEGRITY,
     )
     override val outputs = setOf(NeuroChannel.MEMORY)
+
+    @Volatile
+    var persistenceHealthy: Boolean = snapshotStore == null
+        private set
 
     override suspend fun onSignal(signal: NeuroSignal): List<NeuroSignal> {
         val trainingEnabled = signal.payload["train"]?.toBooleanStrictOrNull() ?: false
@@ -195,6 +207,9 @@ class InneresWerdenTrainer(
         )
 
         val loss = model.train(example)
+        val currentSnapshot = model.snapshot()
+        val persisted = snapshotStore?.save(currentSnapshot) ?: true
+        persistenceHealthy = persisted
         val prediction = model.predict(example.features)
 
         return listOf(
@@ -208,6 +223,7 @@ class InneresWerdenTrainer(
                     "coherence" to prediction.coherence.toString(),
                     "growthSignal" to prediction.growthSignal.toString(),
                     "confidence" to prediction.confidence.toString(),
+                    "persistenceHealthy" to persisted.toString(),
                 ),
             ),
         )
