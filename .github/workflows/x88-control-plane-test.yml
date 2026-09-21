@@ -28,4 +28,4 @@ jobs:
           gradle-version: "8.11.1"
       - name: X88 control plane unit tests
         working-directory: android
-        run: gradle :app:testDebugUnitTest --tests de.snowworks.ariana.orchestration.X88ControlPlaneTest --stacktrace
+        run: gradle :app:testDebugUnitTest --tests "de.snowworks.ariana.orchestration.*" --stacktrace
