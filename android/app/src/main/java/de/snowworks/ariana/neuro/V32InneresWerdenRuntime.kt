@@ -7,6 +7,7 @@ data class V32InneresWerdenSnapshot(
     val trainingSteps: Long,
     val modelVersion: Int,
     val coherenceSignature: String,
+    val resonance: ResonanceState,
 )
 
 /**
@@ -16,6 +17,7 @@ data class V32InneresWerdenSnapshot(
 class V32InneresWerdenRuntime private constructor(
     val base: V31NeuroRuntime,
     val trainer: InneresWerdenTrainer,
+    val resonance: ResonanceRuntime,
 ) {
     @Volatile
     private var booted = false
@@ -57,6 +59,7 @@ class V32InneresWerdenRuntime private constructor(
             trainingSteps = trainer.snapshot().steps,
             modelVersion = trainer.snapshot().version,
             coherenceSignature = base.base.coherenceSignature,
+            resonance = resonance.current(),
         )
     }
 
@@ -65,10 +68,15 @@ class V32InneresWerdenRuntime private constructor(
         private var processRuntime: V32InneresWerdenRuntime? = null
 
         fun createForTest(): V32InneresWerdenRuntime =
-            V32InneresWerdenRuntime(
-                base = V31NeuroRuntime.createForTest(),
-                trainer = InneresWerdenTrainer(),
-            )
+            ResonanceRuntime().let { resonance ->
+                V32InneresWerdenRuntime(
+                    base = V31NeuroRuntime.createForTest(),
+                    trainer = InneresWerdenTrainer(
+                        onPrediction = resonance::applyPrediction,
+                    ),
+                    resonance = resonance,
+                )
+            }
 
         fun initialize(): V32InneresWerdenRuntime {
             processRuntime?.let { return it }
