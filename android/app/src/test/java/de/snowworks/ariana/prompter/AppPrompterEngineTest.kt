@@ -36,4 +36,18 @@ class AppPrompterEngineTest {
         assertTrue(project.files.containsKey("index.html"))
         assertTrue(project.files.containsKey("README.txt"))
     }
+
+    @Test
+    fun generatesMultipleScreensAndNavigationFromPrompt() {
+        val project = AppPrompterEngine.generateProject(
+            "Baue eine App namens Luna Notes mit Startseite, Notizen und Einstellungen."
+        )
+
+        assertTrue(project.files.containsKey("screens/home.html"))
+        assertTrue(project.files.containsKey("screens/notes.html"))
+        assertTrue(project.files.containsKey("screens/settings.html"))
+        assertTrue(project.files["index.html"]!!.contains("screens/notes.html"))
+        assertTrue(project.files["index.html"]!!.contains("screens/settings.html"))
+        assertTrue(project.files["screens/notes.html"]!!.contains("Luna Notes"))
+    }
 }
