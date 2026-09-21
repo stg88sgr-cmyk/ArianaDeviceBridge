@@ -15,7 +15,7 @@ import de.snowworks.ariana.bridge.LocalAiProviderManager
 import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
-import de.snowworks.ariana.neuro.V32InneresWerdenRuntime
+import de.snowworks.ariana.neuro.V37EvidenceRuntime
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 import de.snowworks.ariana.world.X88FantasyWorldBootstrap
@@ -45,7 +45,8 @@ class SnowworksApp : Application() {
         // metadata-only telemetry and integrity monitoring. V30 is the composed health
         // gate; V31 adds read-only observability for UI/diagnostics. Neither grants
         // Android permissions or bypasses X-88 SecurityChain.
-        // V36 stabilization restores the durable local model snapshot before the neuro fabric starts.\n        val inneresWerdenRuntime = V32InneresWerdenRuntime.initialize(this)
+        // V36 stabilization restores the durable local model snapshot before the neuro fabric starts.\n        val x88Runtime = V37EvidenceRuntime.initialize(this)
+        val inneresWerdenRuntime = x88Runtime.base
         val neuroRuntime = inneresWerdenRuntime.base
 
         // Symbolic/fantasy world layer remains attached to the underlying V30 fabric.
