@@ -1,0 +1,74 @@
+package de.snowworks.ariana.prompter
+
+data class AppProjectSpec(
+    val appName: String,
+    val originalPrompt: String,
+    val features: List<String>,
+    val html: String
+)
+
+object AppPrompterEngine {
+    private val namePatterns = listOf(
+        Regex("""(?:app|anwendung|projekt)\s+(?:namens|mit dem namen|name)\s+["“]?([^"”.,]+)["”]?""", RegexOption.IGNORE_CASE),
+        Regex("""namens\s+["“]?([^"”.,]+)["”]?""", RegexOption.IGNORE_CASE)
+    )
+
+    fun generate(prompt: String): AppProjectSpec {
+        val cleanPrompt = prompt.trim()
+        val appName = namePatterns.firstNotNullOfOrNull { pattern ->
+            pattern.find(cleanPrompt)?.groupValues?.getOrNull(1)?.trim()
+        }?.takeIf { it.isNotBlank() } ?: "Snowworks App"
+
+        val features = listOf("Startseite", "Notizen speichern", "Dunkles Design")
+            .filter { feature ->
+                cleanPrompt.contains(feature, ignoreCase = true) ||
+                    when (feature) {
+                        "Startseite" -> cleanPrompt.contains("startseite", ignoreCase = true)
+                        "Notizen speichern" -> cleanPrompt.contains("notizen", ignoreCase = true)
+                        "Dunkles Design" -> cleanPrompt.contains("dunkel", ignoreCase = true)
+                        else -> false
+                    }
+            }.ifEmpty { listOf("Startseite") }
+
+        val escapedName = escapeHtml(appName)
+        val featureMarkup = features.joinToString("\n") { "<li>" + escapeHtml(it) + "</li>" }
+        val html = """
+            <!doctype html>
+            <html lang="de">
+            <head>
+              <meta charset="utf-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1">
+              <title>$escapedName</title>
+              <style>
+                :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+                body { margin: 0; min-height: 100vh; background: #120207; color: #fff; }
+                main { max-width: 720px; margin: auto; padding: 32px 20px; }
+                .card { border: 1px solid #990421; border-radius: 20px; padding: 24px; background: #1b0a12; }
+                h1 { margin-top: 0; }
+                li { margin: 10px 0; }
+              </style>
+            </head>
+            <body>
+              <main>
+                <section class="card">
+                  <h1>$escapedName</h1>
+                  <p>Erzeugt mit Snowworks App Prompter V3.</p>
+                  <ul>
+                    $featureMarkup
+                  </ul>
+                </section>
+              </main>
+            </body>
+            </html>
+        """.trimIndent()
+
+        return AppProjectSpec(appName, cleanPrompt, features, html)
+    }
+
+    private fun escapeHtml(value: String): String =
+        value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("\"", "&quot;")
+            .replace("'", "&#39;")
+}
