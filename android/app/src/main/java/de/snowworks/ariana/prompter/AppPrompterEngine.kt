@@ -81,7 +81,7 @@ object AppPrompterEngine {
         return AppProjectSpec(appName, cleanPrompt, features, html)
     }
 
-    private fun escapeJson(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
+    private fun screenHtml(appName: String, title: String, body: String): String {\n        val safeName = escapeHtml(appName)\n        return """<!doctype html>\n<html lang="de">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>$safeName · ${escapeHtml(title)}</title>\n</head>\n<body style="margin:0;background:#120207;color:#fff;font-family:system-ui,sans-serif">\n  <main style="max-width:720px;margin:auto;padding:32px 20px">\n    <nav><a href="../index.html" style="color:#00cfff">← $safeName</a></nav>\n    <section style="margin-top:24px;border:1px solid #990421;border-radius:20px;padding:24px">\n      <h1>${escapeHtml(title)}</h1>\n      <p>${escapeHtml(body)}</p>\n    </section>\n  </main>\n</body>\n</html>"""\n    }\n\n    private fun escapeJson(value: String): String = value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n")
 
     private fun escapeHtml(value: String): String =
         value.replace("&", "&amp;")
