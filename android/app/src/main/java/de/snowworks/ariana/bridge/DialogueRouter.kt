@@ -26,10 +26,13 @@ object DialogueRouter {
     @Volatile private var appContext: Context? = null
     @Volatile private var memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess? = null
 
-    fun initialize(context: Context) {
+    fun initialize(
+        context: Context,
+        durableMemoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess? = null,
+    ) {
         val app = context.applicationContext
         appContext = app
-        memoryAccess = de.snowworks.ariana.memory.ArianaX88MemoryAccess(
+        memoryAccess = durableMemoryAccess ?: de.snowworks.ariana.memory.ArianaX88MemoryAccess(
             de.snowworks.ariana.memory.X88MemoryRepository(
                 de.snowworks.ariana.memory.DefaultX88MemoryBridge(),
                 de.snowworks.ariana.memory.SharedPreferencesX88MemoryStore(app),
