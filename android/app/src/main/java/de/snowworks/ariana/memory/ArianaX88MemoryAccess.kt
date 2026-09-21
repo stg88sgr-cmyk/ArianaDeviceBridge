@@ -12,8 +12,12 @@ class ArianaX88MemoryAccess(
     fun remember(item: ImportedMemory): X88MemoryItem? =
         repository.import(item.copy(source = item.source))
 
-    fun recall(): List<X88MemoryItem> =
-        repository.recall()
+    fun recall(
+        project: String? = null,
+        topic: String? = null,
+        bucket: X88MemoryItem.Bucket? = null,
+    ): List<X88MemoryItem> =
+        repository.recall(project, topic, bucket)
 
     fun clear(): Unit =
         repository.clear()
