@@ -1,7 +1,8 @@
 package de.snowworks.ariana.neuro
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import org.junit.Test
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 
 class ResonanceRuntimeTest {
     @Test
