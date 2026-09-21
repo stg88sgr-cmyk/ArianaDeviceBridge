@@ -10,7 +10,7 @@ class ArianaX88MemoryAccess(
     private val repository: X88MemoryRepository,
 ) {
     fun remember(item: ImportedMemory): X88MemoryItem? =
-        repository.import(item.copy(source = item.source))
+        repository.import(item)
 
     fun recall(
         project: String? = null,
