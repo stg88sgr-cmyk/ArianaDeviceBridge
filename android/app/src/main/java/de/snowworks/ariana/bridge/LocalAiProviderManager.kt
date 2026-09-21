@@ -40,11 +40,7 @@ object LocalAiProviderManager {
             override fun generate(text: String): String = provider.generate(text)
         }
         AiProviderManager.registerAdapter(adapter, local = true)
-        val registered = DialogueRouter.register(
-            adapter.id,
-            adapter.timeoutMs,
-            adapter::generate,
-        )
+        val registered = AiProviderManager.registerAdapter(adapter, local = true)
         if (registered) {
             activeProvider = provider
             return true
