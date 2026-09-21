@@ -1,0 +1,32 @@
+package de.snowworks.ariana.memory
+
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class ArianaX88MemoryAccessTest {
+
+    @Test
+    fun saveAndRecallUsesTheSharedMemoryRepository() {
+        val store = FakeX88MemoryStore()
+        val access = ArianaX88MemoryAccess(X88MemoryRepository(DefaultX88MemoryBridge(), store))
+
+        val saved = access.remember(
+            ImportedMemory(
+                content = "Ariana/X88 persistent memory",
+                source = X88MemoryItem.Source.ARIANA,
+                capturedAtEpochMs = 42L,
+                project = "Ariana/X88"
+            )
+        )
+
+        assertEquals("Ariana/X88 persistent memory", saved?.content)
+        assertEquals(listOf(saved), access.recall())
+    }
+
+    private class FakeX88MemoryStore : X88MemoryStore {
+        private var items: List<X88MemoryItem> = emptyList()
+        override fun load(): List<X88MemoryItem> = items
+        override fun save(items: List<X88MemoryItem>) { this.items = items }
+        override fun clear() { items = emptyList() }
+    }
+}
