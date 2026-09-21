@@ -1,21 +1,29 @@
 package de.snowworks.ariana.neuro
 
+import de.snowworks.app.resonance.ResonanceMapper
+import de.snowworks.app.resonance.ResonanceSignature
+import de.snowworks.app.resonance.ResonanceStabilizer
+import de.snowworks.app.resonance.SpectralBands
+import de.snowworks.app.resonance.StableResonanceFrame
+import de.snowworks.app.resonance.X88RuneGraph
+
 /**
- * Small local state holder that connects Inneres-Werden predictions to X88
- * without introducing a new provider dependency or platform permission.
+ * X88 control-plane bridge for the deterministic resonance core.
+ *
+ * The core is local and deterministic. It is not a measurement of emotions,
+ * consciousness, or physical "energy".
  */
 class ResonanceRuntime(
-    initial: ResonanceState = ResonanceState(
-        coherence = 0.0,
-        growth = 0.0,
-        correction = 0.0,
-        stability = 0.0,
-    ),
+    initial: ResonanceState = ResonanceState(0.0, 0.0, 0.0, 0.0),
 ) {
     @Volatile
     private var state: ResonanceState = initial
 
+    private val stabilizer = ResonanceStabilizer()
+    private val coreSignature: ResonanceSignature = ResonanceMapper.map(X88RuneGraph.default)
+
     fun current(): ResonanceState = state
+    fun coreSignature(): ResonanceSignature = coreSignature
 
     @Synchronized
     fun applyPrediction(
@@ -25,5 +33,22 @@ class ResonanceRuntime(
         val next = ResonanceState.fromInneresWerden(prediction, correctionSignal)
         state = next
         return next
+    }
+
+    @Synchronized
+    fun processFrame(
+        inputEnergy: Float,
+        dominantHz: Float,
+        bands: SpectralBands = SpectralBands(),
+    ): StableResonanceFrame =
+        stabilizer.process(
+            inputEnergy = inputEnergy,
+            dominantHz = dominantHz,
+            bands = bands,
+            generatedFrequencyHz = coreSignature.fundamentalHz.toFloat(),
+        )
+
+    fun resetFrameStabilizer() {
+        stabilizer.reset()
     }
 }
