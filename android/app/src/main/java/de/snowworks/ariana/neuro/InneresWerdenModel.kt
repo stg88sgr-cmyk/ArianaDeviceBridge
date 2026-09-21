@@ -164,6 +164,7 @@ class InneresWerdenModel(
 
 class InneresWerdenTrainer(
     private val model: InneresWerdenModel = InneresWerdenModel(),
+    private val onPrediction: (InneresWerdenPrediction) -> Unit = {},
 ) : NeuroModule {
     override val id = "inneres-werden-trainer"
     override val inputs = setOf(
@@ -196,6 +197,7 @@ class InneresWerdenTrainer(
 
         val loss = model.train(example)
         val prediction = model.predict(example.features)
+        onPrediction(prediction)
 
         return listOf(
             NeuroSignal(
