@@ -34,7 +34,8 @@ class SnowworksApp : Application() {
     override fun onCreate() {
         super.onCreate()
 
-        // Initialize the shared X88 memory seam before AI/runtime components start.\n        x88Memory.recall()
+        // Initialize the shared X88 memory seam before AI/runtime components start.
+        x88Memory.recall()
 
         // Device capture sessions remain intentionally non-restorable after process death.
         SessionRegistry.clear()
