@@ -84,6 +84,23 @@ object DialogueRouter {
         }
     }
 
+    fun generateWithMemory(
+        rawText: String,
+        memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
+        project: String? = null,
+        topic: String? = null,
+    ): Outcome {
+        val text = sanitize(rawText)
+        if (text.isEmpty()) return Outcome(false, error = "INVALID_INPUT")
+        val memoryContext = DialogueMemoryContext.from(memoryAccess, project, topic)
+        val enriched = if (memoryContext.isBlank()) {
+            text
+        } else {
+            "X88-MEMORY CONTEXT:\n$memoryContext\n\nUSER:\n$text"
+        }
+        return generateActiveProvider(enriched)
+    }
+
     private fun parseMultiAiCommand(rawText: String): MultiAiCommand? {
         val trimmed = rawText.trim()
         val commands = listOf(
