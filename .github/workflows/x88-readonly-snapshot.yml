@@ -1,0 +1,59 @@
+name: X-88 Read-only Snapshot Gate
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt"
+      - ".github/workflows/x88-readonly-snapshot.yml"
+  pull_request:
+    paths:
+      - "android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt"
+      - ".github/workflows/x88-readonly-snapshot.yml"
+
+jobs:
+  readonly-snapshot-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify data minimization and non-execution boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          state='android/app/src/main/java/de/snowworks/ariana/bridge/ReadOnlyDeviceState.kt'
+          grep -F 'object ReadOnlyDeviceState' "$state"
+          grep -F 'PermissionStore(app)' "$state"
+          grep -F 'SessionRegistry.isActive(feature)' "$state"
+          grep -F '.put("permissionGranted", permissions.isGranted(feature))' "$state"
+          grep -F '.put("sessionActive", SessionRegistry.isActive(feature))' "$state"
+
+          ! grep -F 'ArianaDeviceApi' "$state"
+          ! grep -F 'ArianaCaptureService' "$state"
+          ! grep -F 'CameraFrameStore' "$state"
+          ! grep -F 'NotificationStore' "$state"
+          ! grep -F 'MediaProjection' "$state"
+          ! grep -F 'CameraManager' "$state"
+          ! grep -F 'AudioRecord' "$state"
+          ! grep -F 'LocationManager' "$state"
+          ! grep -E '\.put\("(jpegBase64|text|title|key|filePath|path|latitude|longitude|location|pairingCode|token|bearer|approvalGrant|bluetoothDevices)"' "$state"
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Compile Android debug sources
+        working-directory: android
+        run: gradle :app:compileDebugKotlin --stacktrace
