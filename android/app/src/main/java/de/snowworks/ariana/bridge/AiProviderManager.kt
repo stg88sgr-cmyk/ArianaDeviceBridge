@@ -48,10 +48,11 @@ object AiProviderManager {
         }
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
         val generate = generatorFor(config)
+        val generator = generatorFor(config)
         val adapter = object : AiProviderAdapter {
             override val id = providerId(host, config.model)
             override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
-            override fun generate(text: String): String = generate(text)
+            override fun generate(text: String): String = generator(text)
         }
         registerAdapter(adapter, local = false)
         return DialogueRouter.register(adapter.id, adapter.timeoutMs, adapter::generate)
