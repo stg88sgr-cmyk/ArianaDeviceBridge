@@ -107,6 +107,7 @@ object DialogueRouter {
         topic: String? = null,
     ): Outcome = generateWithMemory(rawText, memoryAccess, project, topic)
 
+    /** Generates a reply with bounded, filtered X88 memory context. */
     fun generateWithMemory(
         rawText: String,
         memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
