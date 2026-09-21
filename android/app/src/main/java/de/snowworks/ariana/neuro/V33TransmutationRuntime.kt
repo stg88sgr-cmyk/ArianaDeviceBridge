@@ -19,8 +19,13 @@ class V33TransmutationRuntime private constructor(
             ),
         )
 
+    fun evaluateIfHealthy(snapshot: V32InneresWerdenSnapshot): TransmutationState? =
+        V33TransmutationHealthGate.check(snapshot)
+            .takeIf { it.allowed }
+            ?.let { evaluate(snapshot) }
+
     fun evaluateCurrent(): TransmutationState? =
-        inneresWerden.currentOrNull()?.let { evaluate(it.snapshot()) }
+        inneresWerden.currentOrNull()?.let { evaluateIfHealthy(it.snapshot()) }
 
     companion object {
         fun createForTest(inneresWerden: V32InneresWerdenRuntime): V33TransmutationRuntime =
