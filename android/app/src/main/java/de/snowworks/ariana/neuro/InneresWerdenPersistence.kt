@@ -13,6 +13,8 @@ import java.security.MessageDigest
  * permissions and private conversation text never cross this boundary.
  */
 interface InneresWerdenSnapshotStore {
+    val healthy: Boolean
+
     fun load(): InneresWerdenModelSnapshot?
     fun save(snapshot: InneresWerdenModelSnapshot): Boolean
     fun clear(): Boolean
@@ -24,18 +26,36 @@ class SharedPreferencesInneresWerdenSnapshotStore(
         context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE),
 ) : InneresWerdenSnapshotStore {
 
+    @Volatile
+    override var healthy: Boolean = true
+        private set
+
     override fun load(): InneresWerdenModelSnapshot? {
-        val encoded = preferences.getString(KEY_SNAPSHOT, null) ?: return null
-        return runCatching { decode(encoded) }.getOrNull()
+        val encoded = preferences.getString(KEY_SNAPSHOT, null)
+        if (encoded == null) {
+            healthy = true
+            return null
+        }
+
+        return runCatching { decode(encoded) }
+            .onSuccess { healthy = true }
+            .onFailure { healthy = false }
+            .getOrNull()
     }
 
     override fun save(snapshot: InneresWerdenModelSnapshot): Boolean {
-        val encoded = encode(snapshot)
-        return preferences.edit().putString(KEY_SNAPSHOT, encoded).commit()
+        val success = preferences.edit()
+            .putString(KEY_SNAPSHOT, encode(snapshot))
+            .commit()
+        healthy = success
+        return success
     }
 
-    override fun clear(): Boolean =
-        preferences.edit().remove(KEY_SNAPSHOT).commit()
+    override fun clear(): Boolean {
+        val success = preferences.edit().remove(KEY_SNAPSHOT).commit()
+        healthy = success
+        return success
+    }
 
     private fun encode(snapshot: InneresWerdenModelSnapshot): String {
         val payload = JSONObject()
@@ -48,6 +68,7 @@ class SharedPreferencesInneresWerdenSnapshotStore(
             .put("steps", snapshot.steps)
 
         return JSONObject()
+            .put("envelopeSchemaVersion", ENVELOPE_SCHEMA_VERSION)
             .put("payload", payload)
             .put("sha256", sha256(payload.toString()))
             .toString()
@@ -55,7 +76,7 @@ class SharedPreferencesInneresWerdenSnapshotStore(
 
     private fun decode(encoded: String): InneresWerdenModelSnapshot {
         val root = JSONObject(encoded)
-        require(root.optInt("schemaVersion", -1) == ENVELOPE_SCHEMA_VERSION)
+        require(root.optInt("envelopeSchemaVersion", -1) == ENVELOPE_SCHEMA_VERSION)
         val payload = root.getJSONObject("payload")
         require(payload.getInt("schemaVersion") == SCHEMA_VERSION)
         require(root.getString("sha256") == sha256(payload.toString()))
@@ -94,15 +115,20 @@ class InMemoryInneresWerdenSnapshotStore(
 ) : InneresWerdenSnapshotStore {
     private var snapshot: InneresWerdenModelSnapshot? = initial
 
+    override var healthy: Boolean = true
+        private set
+
     override fun load(): InneresWerdenModelSnapshot? = snapshot
 
     override fun save(snapshot: InneresWerdenModelSnapshot): Boolean {
         this.snapshot = snapshot
+        healthy = true
         return true
     }
 
     override fun clear(): Boolean {
         snapshot = null
+        healthy = true
         return true
     }
 }
