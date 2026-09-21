@@ -59,7 +59,6 @@ object SmartAiRouter {
                 originalText = text,
                 taskClass = taskClass,
                 cloudClassification = policy.classification,
-                cloudClassification = policy.classification,
             )
             TaskClass.SECOND_OPINION -> callMetaClaudeLocal(
                 context = context.applicationContext,
