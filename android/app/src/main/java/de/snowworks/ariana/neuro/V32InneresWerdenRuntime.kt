@@ -1,5 +1,7 @@
 package de.snowworks.ariana.neuro
 
+import android.content.Context
+
 data class V32InneresWerdenSnapshot(
     val stage: Int,
     val runtimeVersion: Int,
@@ -7,6 +9,7 @@ data class V32InneresWerdenSnapshot(
     val trainingSteps: Long,
     val modelVersion: Int,
     val coherenceSignature: String,
+    val persistenceHealthy: Boolean,
 )
 
 /**
@@ -16,6 +19,7 @@ data class V32InneresWerdenSnapshot(
 class V32InneresWerdenRuntime private constructor(
     val base: V31NeuroRuntime,
     val trainer: InneresWerdenTrainer,
+    val snapshotStore: InneresWerdenSnapshotStore,
 ) {
     @Volatile
     private var booted = false
@@ -32,7 +36,8 @@ class V32InneresWerdenRuntime private constructor(
         val baseReport = base.health()
         val stage32 = booted &&
             baseReport.green &&
-            trainer.id in base.base.fabric.moduleIds()
+            trainer.id in base.base.fabric.moduleIds() &&
+            trainer.persistenceHealthy
 
         val stages = baseReport.stages + NeuroStageHealth(
             version = 32,
@@ -50,13 +55,15 @@ class V32InneresWerdenRuntime private constructor(
 
     fun snapshot(): V32InneresWerdenSnapshot {
         val report = health()
+        val modelSnapshot = trainer.snapshot()
         return V32InneresWerdenSnapshot(
             stage = 32,
             runtimeVersion = report.version,
             green = report.green,
-            trainingSteps = trainer.snapshot().steps,
-            modelVersion = trainer.snapshot().version,
+            trainingSteps = modelSnapshot.steps,
+            modelVersion = modelSnapshot.version,
             coherenceSignature = base.base.coherenceSignature,
+            persistenceHealthy = trainer.persistenceHealthy,
         )
     }
 
@@ -64,16 +71,24 @@ class V32InneresWerdenRuntime private constructor(
         @Volatile
         private var processRuntime: V32InneresWerdenRuntime? = null
 
-        fun createForTest(): V32InneresWerdenRuntime =
-            V32InneresWerdenRuntime(
+        fun createForTest(
+            snapshotStore: InneresWerdenSnapshotStore = InMemoryInneresWerdenSnapshotStore(),
+        ): V32InneresWerdenRuntime {
+            val initial = snapshotStore.load() ?: InneresWerdenModel.defaultSnapshot()
+            val model = InneresWerdenModel(initial)
+            return V32InneresWerdenRuntime(
                 base = V31NeuroRuntime.createForTest(),
-                trainer = InneresWerdenTrainer(),
+                trainer = InneresWerdenTrainer(model, snapshotStore),
+                snapshotStore = snapshotStore,
             )
+        }
 
-        fun initialize(): V32InneresWerdenRuntime {
+        fun initialize(context: Context): V32InneresWerdenRuntime {
             processRuntime?.let { return it }
             return synchronized(this) {
-                processRuntime ?: createForTest().also {
+                processRuntime ?: createForTest(
+                    snapshotStore = SharedPreferencesInneresWerdenSnapshotStore(context),
+                ).also {
                     it.boot()
                     processRuntime = it
                 }
