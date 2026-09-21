@@ -184,7 +184,7 @@ class InneresWerdenTrainer(
     override val outputs = setOf(NeuroChannel.MEMORY)
 
     @Volatile
-    var persistenceHealthy: Boolean = snapshotStore == null
+    var persistenceHealthy: Boolean = snapshotStore?.healthy ?: true
         private set
 
     override suspend fun onSignal(signal: NeuroSignal): List<NeuroSignal> {
