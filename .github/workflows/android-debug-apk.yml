@@ -155,6 +155,29 @@ jobs:
           grep -F 'Noch nichts ausgeführt' "$ui_file"
           grep -F 'ActionApprovalStore.revokeAll()' "$ui_file"
 
+      - name: X-88 V33 transmutation health-gate source check
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate_file='android/app/src/main/java/de/snowworks/ariana/neuro/V33TransmutationHealthGate.kt'
+          runtime_file='android/app/src/main/java/de/snowworks/ariana/neuro/V33TransmutationRuntime.kt'
+          test_file='android/app/src/test/java/de/snowworks/ariana/neuro/V33TransmutationRuntimeTest.kt'
+
+          grep -F 'V33TransmutationHealthGate.check(snapshot)' "$runtime_file"
+          grep -F 'evaluateIfHealthy' "$runtime_file"
+          grep -F 'V32_NOT_GREEN' "$gate_file"
+          grep -F 'V32_STAGE_MISMATCH' "$gate_file"
+          grep -F 'V32_RUNTIME_VERSION_MISMATCH' "$gate_file"
+          grep -F 'COHERENCE_SIGNATURE_MISSING' "$gate_file"
+          grep -F 'RESONANCE_NON_FINITE' "$gate_file"
+          grep -F 'healthGateAllowsOnlyConsistentGreenV32Snapshot' "$test_file"
+          grep -F 'healthGateBlocksNonGreenSnapshot' "$test_file"
+          grep -F 'healthGateBlocksStageOrRuntimeVersionMismatch' "$test_file"
+
+      - name: Unit tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
       - name: Assemble debug APK
         working-directory: android
         env:
