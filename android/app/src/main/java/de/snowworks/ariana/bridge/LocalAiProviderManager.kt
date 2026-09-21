@@ -34,10 +34,12 @@ object LocalAiProviderManager {
 
         closeRuntime()
         val provider = LocalDialogueProvider(context, model.file)
-        val registered = DialogueRouter.register(
-            PROVIDER_ID,
-            DialogueRouter.LOCAL_PROVIDER_TIMEOUT_MS,
-        ) { text -> provider.generate(text) }
+        val adapter = object : AiProviderAdapter {
+            override val id = PROVIDER_ID
+            override val timeoutMs = DialogueRouter.LOCAL_PROVIDER_TIMEOUT_MS
+            override fun generate(text: String) = provider.generate(text)
+        }
+        val registered = DialogueRouter.register(adapter)
         if (registered) {
             activeProvider = provider
             return true
