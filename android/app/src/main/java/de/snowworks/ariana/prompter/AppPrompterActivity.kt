@@ -14,9 +14,11 @@ class AppPrompterActivity : AppCompatActivity() {
     private lateinit var promptInput: EditText
     private lateinit var resultView: TextView
     private var currentHtml: String? = null
+    private lateinit var projectStore: AppProjectStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        projectStore = AppProjectStore(this)
         setContentView(buildUi())
     }
 
@@ -73,6 +75,7 @@ class AppPrompterActivity : AppCompatActivity() {
         }
         val spec = AppPrompterEngine.generate(prompt)
         currentHtml = spec.html
+        projectStore.save(spec)
         resultView.text = buildString {
             appendLine("APP · " + spec.appName)
             appendLine()
@@ -80,7 +83,7 @@ class AppPrompterActivity : AppCompatActivity() {
             spec.features.forEach { appendLine("• " + it) }
             appendLine()
             appendLine("HTML · " + spec.html.length + " Zeichen")
-            appendLine("Bereit zum Speichern.")
+            appendLine("Projekt lokal gespeichert.")
         }
     }
 
