@@ -127,12 +127,12 @@ class X88AvatarView @JvmOverloads constructor(
             Mode.STOPPED -> 0.02f
         }
         val energy = (sin(t * 2f * PI.toFloat() * energyHz) + 1f) / 2f
-        val corePulse = 1f + energyAmp * energy + resonanceEnergy * 0.08f + correctionPressure * 0.025f
         val resonance = resonanceState
         val resonanceEnergy = (
             (resonance.coherence + resonance.growth + resonance.stability) / 3.0
         ).coerceIn(0.0, 1.0).toFloat()
         val correctionPressure = kotlin.math.abs(resonance.correction).coerceIn(0.0, 1.0).toFloat()
+        val corePulse = 1f + energyAmp * energy + resonanceEnergy * 0.08f + correctionPressure * 0.025f
         val outerRadius = w.coerceAtMost(h) * 0.435f * pulse * (1f + resonanceEnergy * 0.025f)
 
         paint.style = Paint.Style.FILL
