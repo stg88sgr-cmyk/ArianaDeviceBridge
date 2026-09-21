@@ -25,7 +25,7 @@ class V33TransmutationRuntime private constructor(
             ?.let { evaluate(snapshot) }
 
     fun evaluateCurrent(): TransmutationState? =
-        inneresWerden.currentOrNull()?.let { evaluateIfHealthy(it.snapshot()) }
+        V32InneresWerdenRuntime.currentOrNull()?.let { evaluateIfHealthy(it.snapshot()) }
 
     companion object {
         fun createForTest(inneresWerden: V32InneresWerdenRuntime): V33TransmutationRuntime =
