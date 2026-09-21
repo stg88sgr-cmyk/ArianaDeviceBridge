@@ -39,7 +39,6 @@ object LocalAiProviderManager {
             override val timeoutMs = DialogueRouter.LOCAL_PROVIDER_TIMEOUT_MS
             override fun generate(text: String): String = provider.generate(text)
         }
-        AiProviderManager.registerAdapter(adapter, local = true)
         val registered = AiProviderManager.registerAdapter(adapter, local = true)
         if (registered) {
             activeProvider = provider
