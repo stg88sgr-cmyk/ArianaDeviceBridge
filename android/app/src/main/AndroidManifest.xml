@@ -38,6 +38,12 @@
         <uses-native-library android:name="libOpenCL-pixel.so" android:required="false" />
 
         <activity android:name=".ui.LocalModelSettingsActivity" android:exported="false" />
+        <activity android:name="de.snowworks.ariana.prompter.AppPrompterActivity" android:exported="true" android:label="Snowworks App Prompter V3">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
         <activity android:name=".ui.AiProviderSettingsActivity" android:exported="false" />
         <activity android:name=".ui.VoiceTestActivity" android:exported="false" android:label="Ariana Voice" />
         <activity android:name=".ui.X88HealthActivity" android:exported="false" android:label="ARIANA X-88 Health" />
