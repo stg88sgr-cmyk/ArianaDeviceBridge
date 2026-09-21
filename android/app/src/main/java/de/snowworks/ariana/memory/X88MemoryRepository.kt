@@ -21,7 +21,16 @@ class X88MemoryRepository(
         return memory
     }
 
-    fun recall(): List<X88MemoryItem> = store.load()
+    fun recall(
+        project: String? = null,
+        topic: String? = null,
+        bucket: X88MemoryItem.Bucket? = null,
+    ): List<X88MemoryItem> =
+        store.load().filter { memory ->
+            (project == null || memory.project == project) &&
+                (topic == null || memory.topic == topic) &&
+                (bucket == null || memory.bucket == bucket)
+        }
 
     fun clear() = store.clear()
 
