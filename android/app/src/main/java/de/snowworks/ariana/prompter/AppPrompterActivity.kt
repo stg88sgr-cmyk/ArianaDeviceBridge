@@ -54,6 +54,10 @@ class AppPrompterActivity : AppCompatActivity() {
             setOnClickListener { generate() }
         })
         root.addView(MaterialButton(this).apply {
+            text = "PROJEKT ALS ZIP EXPORTIEREN"
+            setOnClickListener { exportProject() }
+        })
+        root.addView(MaterialButton(this).apply {
             text = "HTML SPEICHERN"
             setOnClickListener { saveCurrentHtml() }
         })
@@ -85,6 +89,18 @@ class AppPrompterActivity : AppCompatActivity() {
             appendLine("HTML · " + spec.html.length + " Zeichen")
             appendLine("Projekt lokal gespeichert.")
         }
+    }
+
+    private fun exportProject() {
+        val prompt = promptInput.text.toString()
+        if (prompt.isBlank()) {
+            Toast.makeText(this, "Erzeuge zuerst ein Projekt.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val project = AppPrompterEngine.generateProject(prompt)
+        val file = File(filesDir, "AppPrompter/exports/${project.spec.appName.replace(Regex("[^A-Za-z0-9._-]+"), "_")}.zip")
+        AppProjectZipExporter.export(project, file)
+        Toast.makeText(this, "ZIP exportiert: " + file.name, Toast.LENGTH_LONG).show()
     }
 
     private fun saveCurrentHtml() {
