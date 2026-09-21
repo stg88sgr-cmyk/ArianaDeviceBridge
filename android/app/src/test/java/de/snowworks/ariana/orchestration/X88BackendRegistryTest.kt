@@ -6,7 +6,7 @@ import org.junit.Test
 
 class X88BackendRegistryTest {
     @Test
-    fun keepsOneBackendPerCapability() {
+    fun keepsMultipleBackendsPerCapabilityInRegistrationOrder() {
         val registry = X88BackendRegistry(
             listOf(
                 X88Backend("local-dialogue", X88Capability.LOCAL_DIALOGUE, local = true),
@@ -15,8 +15,12 @@ class X88BackendRegistryTest {
             ),
         )
 
-        assertEquals("cloud-dialogue", registry.backendFor(X88Capability.LOCAL_DIALOGUE)?.id)
-        assertEquals(setOf(X88Capability.LOCAL_MEMORY), registry.localCapabilities())
+        assertEquals(
+            listOf("local-dialogue", "cloud-dialogue"),
+            registry.backendsFor(X88Capability.LOCAL_DIALOGUE).map { it.id },
+        )
+        assertEquals("local-dialogue", registry.preferredBackend(X88Capability.LOCAL_DIALOGUE)?.id)
+        assertEquals(setOf(X88Capability.LOCAL_DIALOGUE, X88Capability.LOCAL_MEMORY), registry.localCapabilities())
         assertTrue(registry.ids().contains("cloud-dialogue"))
     }
 
