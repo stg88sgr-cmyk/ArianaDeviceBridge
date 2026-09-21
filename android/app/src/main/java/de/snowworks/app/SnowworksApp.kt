@@ -45,7 +45,7 @@ class SnowworksApp : Application() {
         // metadata-only telemetry and integrity monitoring. V30 is the composed health
         // gate; V31 adds read-only observability for UI/diagnostics. Neither grants
         // Android permissions or bypasses X-88 SecurityChain.
-        val inneresWerdenRuntime = V32InneresWerdenRuntime.initialize()
+        // V36 stabilization restores the durable local model snapshot before the neuro fabric starts.\n        val inneresWerdenRuntime = V32InneresWerdenRuntime.initialize(this)
         val neuroRuntime = inneresWerdenRuntime.base
 
         // Symbolic/fantasy world layer remains attached to the underlying V30 fabric.
