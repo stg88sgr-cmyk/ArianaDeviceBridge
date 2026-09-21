@@ -23,6 +23,40 @@ class ArianaX88MemoryAccessTest {
         assertEquals(listOf(saved), access.recall())
     }
 
+    @Test
+    fun recallCanUseProjectTopicAndBucketFilters() {
+        val store = FakeX88MemoryStore()
+        val access = ArianaX88MemoryAccess(X88MemoryRepository(DefaultX88MemoryBridge(), store))
+
+        access.remember(
+            ImportedMemory(
+                content = "Ariana design memory",
+                source = X88MemoryItem.Source.ARIANA,
+                capturedAtEpochMs = 100L,
+                project = "Ariana/X88",
+                topic = "design",
+                bucket = X88MemoryItem.Bucket.PERMANENT
+            )
+        )
+        access.remember(
+            ImportedMemory(
+                content = "Other project",
+                source = X88MemoryItem.Source.LOCAL,
+                capturedAtEpochMs = 101L,
+                project = "Snowworks",
+                topic = "design"
+            )
+        )
+
+        val result = access.recall(
+            project = "Ariana/X88",
+            topic = "design",
+            bucket = X88MemoryItem.Bucket.PERMANENT
+        )
+
+        assertEquals(listOf("Ariana design memory"), result.map { it.content })
+    }
+
     private class FakeX88MemoryStore : X88MemoryStore {
         private var items: List<X88MemoryItem> = emptyList()
         override fun load(): List<X88MemoryItem> = items
