@@ -72,7 +72,7 @@ class V32InneresWerdenRuntime private constructor(
                 V32InneresWerdenRuntime(
                     base = V31NeuroRuntime.createForTest(),
                     trainer = InneresWerdenTrainer(
-                        onPrediction = resonance::applyPrediction,
+                        onPrediction = { prediction -> resonance.applyPrediction(prediction) },
                     ),
                     resonance = resonance,
                 )
