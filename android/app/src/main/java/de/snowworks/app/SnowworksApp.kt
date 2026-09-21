@@ -16,10 +16,26 @@ import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.generator.GeneratorLoopbackServer
 import de.snowworks.ariana.session.SessionRegistry
+import de.snowworks.ariana.memory.ArianaX88MemoryAccess
+import de.snowworks.ariana.memory.DefaultX88MemoryBridge
+import de.snowworks.ariana.memory.SharedPreferencesX88MemoryStore
+import de.snowworks.ariana.memory.X88MemoryRepository
 
 class SnowworksApp : Application() {
+    /** Shared durable memory seam used by Ariana/X88 application components. */
+    val x88Memory: ArianaX88MemoryAccess by lazy {
+        ArianaX88MemoryAccess(
+            X88MemoryRepository(
+                DefaultX88MemoryBridge(),
+                SharedPreferencesX88MemoryStore(this),
+            )
+        )
+    }
     override fun onCreate() {
         super.onCreate()
+
+        // Initialize the shared X88 memory seam before AI/runtime components start.
+        x88Memory.recall()
 
         // Device capture sessions remain intentionally non-restorable after process death.
         SessionRegistry.clear()
@@ -33,7 +49,7 @@ class SnowworksApp : Application() {
         // provider can be selected or called. No prompts, replies or credentials
         // are persisted by this health layer.
         AiProviderHealth.initialize(this)
-        DialogueRouter.initialize(this)
+        DialogueRouter.initialize(this, x88Memory)
         registerHomeAiIndicator()
 
         // Restore only local loopback surfaces when the user-controlled master gate

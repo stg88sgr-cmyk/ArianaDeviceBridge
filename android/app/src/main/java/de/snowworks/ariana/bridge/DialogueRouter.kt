@@ -24,8 +24,24 @@ object DialogueRouter {
     private val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ArianaDialogueProvider").apply { isDaemon = true } }
     @Volatile private var provider: Provider? = null
     @Volatile private var appContext: Context? = null
+    @Volatile private var memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess? = null
 
-    fun initialize(context: Context) { appContext = context.applicationContext }
+    fun initialize(
+        context: Context,
+        durableMemoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess? = null,
+    ) {
+        val app = context.applicationContext
+        appContext = app
+        memoryAccess = durableMemoryAccess ?: de.snowworks.ariana.memory.ArianaX88MemoryAccess(
+            de.snowworks.ariana.memory.X88MemoryRepository(
+                de.snowworks.ariana.memory.DefaultX88MemoryBridge(),
+                de.snowworks.ariana.memory.SharedPreferencesX88MemoryStore(app),
+            )
+        )
+    }
+
+    internal fun applicationContext(): Context? = appContext
+    internal fun durableMemoryAccess(): de.snowworks.ariana.memory.ArianaX88MemoryAccess? = memoryAccess
 
     @Synchronized
     fun register(providerId: String, timeoutMs: Long = PROVIDER_TIMEOUT_MS, generator: Generator): Boolean {
@@ -82,6 +98,31 @@ object DialogueRouter {
         } catch (_: Exception) {
             future.cancel(true); Outcome(false, current.id, error = "PROVIDER_FAILED")
         }
+    }
+
+    internal fun generateActiveProviderWithMemory(
+        rawText: String,
+        memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
+        project: String? = null,
+        topic: String? = null,
+    ): Outcome = generateWithMemory(rawText, memoryAccess, project, topic)
+
+    /** Generates a reply with bounded, filtered X88 memory context. */
+    fun generateWithMemory(
+        rawText: String,
+        memoryAccess: de.snowworks.ariana.memory.ArianaX88MemoryAccess,
+        project: String? = null,
+        topic: String? = null,
+    ): Outcome {
+        val text = sanitize(rawText)
+        if (text.isEmpty()) return Outcome(false, error = "INVALID_INPUT")
+        val memoryContext = DialogueMemoryContext.from(memoryAccess, project, topic)
+        val enriched = if (memoryContext.isBlank()) {
+            text
+        } else {
+            "X88-MEMORY CONTEXT:\n$memoryContext\n\nUSER:\n$text"
+        }
+        return generateActiveProvider(enriched)
     }
 
     private fun parseMultiAiCommand(rawText: String): MultiAiCommand? {

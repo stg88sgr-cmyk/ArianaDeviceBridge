@@ -81,4 +81,42 @@ class DialogueRouterTest {
         assertEquals("INVALID_INPUT", outcome.error)
         assertFalse(called)
     }
+    @Test
+    fun memoryAwareGenerationIncludesRelevantX88Context() {
+        val store = FakeMemoryStore()
+        val access = de.snowworks.ariana.memory.ArianaX88MemoryAccess(
+            de.snowworks.ariana.memory.X88MemoryRepository(
+                de.snowworks.ariana.memory.DefaultX88MemoryBridge(),
+                store
+            )
+        )
+        access.remember(
+            de.snowworks.ariana.memory.ImportedMemory(
+                content = "X88 persistent context",
+                source = de.snowworks.ariana.memory.X88MemoryItem.Source.ARIANA,
+                capturedAtEpochMs = 1L,
+                project = "Ariana/X88"
+            )
+        )
+
+        var received = ""
+        assertTrue(DialogueRouter.register("test-local") { text ->
+            received = text
+            "Antwort"
+        })
+
+        val outcome = DialogueRouter.generateWithMemory("Hallo Ariana", access, "Ariana/X88")
+
+        assertTrue(outcome.ok)
+        assertTrue(received.contains("X88 persistent context"))
+        assertTrue(received.contains("Hallo Ariana"))
+    }
+
+    private class FakeMemoryStore : de.snowworks.ariana.memory.X88MemoryStore {
+        private var items: List<de.snowworks.ariana.memory.X88MemoryItem> = emptyList()
+        override fun load() = items
+        override fun save(items: List<de.snowworks.ariana.memory.X88MemoryItem>) { this.items = items }
+        override fun clear() { items = emptyList() }
+    }
+
 }
