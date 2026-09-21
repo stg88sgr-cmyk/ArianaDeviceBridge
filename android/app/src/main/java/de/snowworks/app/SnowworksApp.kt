@@ -16,6 +16,7 @@ import de.snowworks.ariana.bridge.LoopbackArianaProviderManager
 import de.snowworks.ariana.bridge.LocalBridgeServer
 import de.snowworks.ariana.bridge.UniversalBridgeStateStore
 import de.snowworks.ariana.neuro.V37EvidenceRuntime
+import de.snowworks.ariana.neuro.X88HealthMonitor
 import de.snowworks.ariana.session.SessionRegistry
 import de.snowworks.ariana.universal.v2.ArianaUniversalRuntimeV2
 import de.snowworks.ariana.world.X88FantasyWorldBootstrap
@@ -46,6 +47,7 @@ class SnowworksApp : Application() {
         // gate; V31 adds read-only observability for UI/diagnostics. Neither grants
         // Android permissions or bypasses X-88 SecurityChain.
         // V36 stabilization restores the durable local model snapshot before the neuro fabric starts.\n        val x88Runtime = V37EvidenceRuntime.initialize(this)
+        // V38 observes the composed runtime through a read-only central health monitor.\n        X88HealthMonitor(x88Runtime.evidence).check(x88Runtime)
         val inneresWerdenRuntime = x88Runtime.base
         val neuroRuntime = inneresWerdenRuntime.base
 
