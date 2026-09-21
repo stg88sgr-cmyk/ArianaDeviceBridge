@@ -26,6 +26,7 @@ object DialogueRouter {
 
     private val executor = Executors.newSingleThreadExecutor { runnable -> Thread(runnable, "ArianaDialogueProvider").apply { isDaemon = true } }
     private val adapters = linkedMapOf<String, AiProviderAdapter>()
+    private val localAdapterIds = mutableSetOf<String>()
     @Volatile private var backendRegistry = X88BackendRegistry()
     @Volatile private var provider: Provider? = null
     @Volatile private var appContext: Context? = null
@@ -38,6 +39,7 @@ object DialogueRouter {
         if (!id.matches(Regex("[A-Za-z0-9._:-]{1,80}"))) return false
         if (adapter.timeoutMs !in 1_000L..180_000L) return false
         adapters[id] = adapter
+        if (local) localAdapterIds.add(id) else localAdapterIds.remove(id)
         rebuildBackendRegistry()
         provider = Provider(id, adapter::generate, adapter.timeoutMs)
         return true
@@ -55,7 +57,10 @@ object DialogueRouter {
     }
 
     @Synchronized fun unregister() {
-        provider?.id?.let(adapters::remove)
+        provider?.id?.let { id ->
+            adapters.remove(id)
+            localAdapterIds.remove(id)
+        }
         provider = null
         rebuildBackendRegistry()
     }
@@ -115,7 +120,7 @@ object DialogueRouter {
                 X88Backend(
                     id = adapter.id,
                     capability = X88Capability.LOCAL_DIALOGUE,
-                    local = adapter.id.startsWith("local-ai:"),
+                    local = localAdapterIds.contains(adapter.id),
                 )
             },
         )
