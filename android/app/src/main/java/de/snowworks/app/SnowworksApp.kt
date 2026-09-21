@@ -49,7 +49,7 @@ class SnowworksApp : Application() {
         // provider can be selected or called. No prompts, replies or credentials
         // are persisted by this health layer.
         AiProviderHealth.initialize(this)
-        DialogueRouter.initialize(this)
+        DialogueRouter.initialize(this, x88Memory)
         registerHomeAiIndicator()
 
         // Restore only local loopback surfaces when the user-controlled master gate
