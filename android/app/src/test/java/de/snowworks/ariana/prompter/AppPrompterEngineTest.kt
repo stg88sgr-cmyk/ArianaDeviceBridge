@@ -28,3 +28,13 @@ class AppPrompterEngineTest {
         assertTrue(result.html.contains("Snowworks App"))
     }
 }
+
+
+    @Test
+    fun generatedProjectContainsManifestAndSourceFiles() {
+        val project = AppPrompterEngine.generateProject("Baue eine App namens Luna Notes mit Startseite und Notizen.")
+        assertEquals("Luna Notes", project.spec.appName)
+        assertTrue(project.files.containsKey("project.json"))
+        assertTrue(project.files.containsKey("index.html"))
+        assertTrue(project.files.containsKey("README.txt"))
+    }
