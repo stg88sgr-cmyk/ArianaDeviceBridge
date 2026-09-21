@@ -1,20 +1,14 @@
 package de.snowworks.ariana.bridge
 
 import android.content.Context
-import de.snowworks.ariana.orchestration.X88BackendRegistry
-import de.snowworks.ariana.orchestration.asX88Backend
 import java.net.URI
 
 object AiProviderManager {
-    @Volatile private var backendRegistry = X88BackendRegistry()
-
-    fun registry(): X88BackendRegistry = backendRegistry
+    fun registry() = DialogueRouter.registry()
 
     @Synchronized
-    fun registerAdapter(adapter: AiProviderAdapter, local: Boolean): Boolean {
-        backendRegistry = backendRegistry.register(adapter.asX88Backend(local = local))
-        return true
-    }
+    fun registerAdapter(adapter: AiProviderAdapter, local: Boolean): Boolean =
+        DialogueRouter.registerAdapter(adapter, local)
 
     data class Status(
         val configured: Boolean,
@@ -47,15 +41,13 @@ object AiProviderManager {
             return false
         }
         if (DialogueRouter.providerId() == LocalAiProviderManager.PROVIDER_ID) return true
-        val generate = generatorFor(config)
         val generator = generatorFor(config)
         val adapter = object : AiProviderAdapter {
             override val id = providerId(host, config.model)
             override val timeoutMs = DialogueRouter.PROVIDER_TIMEOUT_MS
             override fun generate(text: String): String = generator(text)
         }
-        registerAdapter(adapter, local = false)
-        return DialogueRouter.register(adapter.id, adapter.timeoutMs, adapter::generate)
+        return registerAdapter(adapter, local = false)
     }
 
     @Synchronized
