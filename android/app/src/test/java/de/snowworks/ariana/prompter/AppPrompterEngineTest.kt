@@ -27,8 +27,6 @@ class AppPrompterEngineTest {
         assertEquals(prompt, result.originalPrompt)
         assertTrue(result.html.contains("Snowworks App"))
     }
-}
-
 
     @Test
     fun generatedProjectContainsManifestAndSourceFiles() {
@@ -38,3 +36,4 @@ class AppPrompterEngineTest {
         assertTrue(project.files.containsKey("index.html"))
         assertTrue(project.files.containsKey("README.txt"))
     }
+}
