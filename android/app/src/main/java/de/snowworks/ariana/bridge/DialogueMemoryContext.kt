@@ -1,6 +1,7 @@
 package de.snowworks.ariana.bridge
 
 import de.snowworks.ariana.memory.ArianaX88MemoryAccess
+import de.snowworks.ariana.memory.X88MemoryItem
 
 /**
  * Builds a bounded, provider-neutral context from durable X88 memories.
@@ -15,9 +16,16 @@ object DialogueMemoryContext {
     ): String =
         access.recall(project = project, topic = topic)
             .asSequence()
+            .sortedBy { bucketPriority(it.bucket) }
             .map { it.content.trim() }
             .filter { it.isNotEmpty() }
-            .joinToString("
-") { "- $it" }
+            .joinToString("\n") { "- $it" }
             .take(MAX_CHARS)
+
+    private fun bucketPriority(bucket: X88MemoryItem.Bucket): Int =
+        when (bucket) {
+            X88MemoryItem.Bucket.PERMANENT -> 0
+            X88MemoryItem.Bucket.IMPORTANT -> 1
+            X88MemoryItem.Bucket.TODAY -> 2
+        }
 }
