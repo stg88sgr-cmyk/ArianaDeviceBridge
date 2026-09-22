@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "snowworks"
 include(":app")
+include(":x88-android")
